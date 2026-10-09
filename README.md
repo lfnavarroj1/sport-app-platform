@@ -44,4 +44,4 @@ Terraform, la composición por ambiente y la promoción coordinada pertenecen a 
 
 El repositorio público [`sport-app-platform`](https://github.com/lfnavarroj1/sport-app-platform) fue creado el 2026-10-09. Esta carpeta continúa siendo la fuente local de su portada y manuales.
 
-La publicación de backend, frontend y móvil permanece condicionada a revisar archivos e historial para descartar secretos, credenciales, datos personales y artefactos no publicables. Hasta completar esa auditoría, los submódulos pueden requerir autorización para clonarse.
+Backend, frontend y móvil se publicaron después de revisar sus archivos e historial para descartar secretos y material no publicable. Los submódulos de la plataforma pueden clonarse sin autorización adicional y continúan fijados a commits concretos.
