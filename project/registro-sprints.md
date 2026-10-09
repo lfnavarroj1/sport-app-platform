@@ -18,15 +18,37 @@ La relación detallada de HU por sprint está en [Planeación y sprints](../wiki
 
 Las 40 HU se crearon nuevamente en `sport-app-platform`. HU001 inicia `En curso`; las otras 39 están en `Backlog`. La asignación por sprint se conserva como referencia inicial y debe ratificarse durante la planeación vigente.
 
+## Cronograma vigente
+
+| Fase | Semanas | Inicio | Fin | Duración |
+| --- | --- | --- | --- | ---: |
+| Sprint 1 | 1–2 | 2026-10-05 | 2026-10-18 | 14 días |
+| Sprint 2 | 3–4 | 2026-10-19 | 2026-11-01 | 14 días |
+| Sprint 3 | 5–7 | 2026-11-02 | 2026-11-22 | 21 días |
+| Evaluación | 8 | 2026-11-23 | 2026-11-29 | 7 días |
+
+```mermaid
+gantt
+    title Cronograma de sprints y evaluación — 2026
+    dateFormat YYYY-MM-DD
+    axisFormat %d/%m
+    section Desarrollo
+    Sprint 1 :s1, 2026-10-05, 14d
+    Sprint 2 :s2, after s1, 14d
+    Sprint 3 :s3, after s2, 21d
+    section Cierre
+    Evaluación :eval, after s3, 7d
+```
+
 ## Cierres
 
 Esta tabla pertenece al ciclo actual. Se completa exclusivamente con aceptación y evidencia de la reimplementación.
 
 | Sprint | Objetivo | Inicio | Fin | Capacidad PHU | PHU comprometidos | PHU aceptados | HU aceptadas | Valor entregado | Predictibilidad | Evidencia |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| Sprint 1 | Pendiente | `N/D` | `N/D` | 28 | `N/D` | `N/D` | `N/D` | `N/D` | `N/D` | — |
-| Sprint 2 | Pendiente | `N/D` | `N/D` | 28 | `N/D` | `N/D` | `N/D` | `N/D` | `N/D` | — |
-| Sprint 3 | Pendiente | `N/D` | `N/D` | 42 | `N/D` | `N/D` | `N/D` | `N/D` | `N/D` | — |
+| Sprint 1 | Pendiente de formular | 2026-10-05 | 2026-10-18 | 28 | 20 | `N/D` | `N/D` | `N/D` | `N/D` | — |
+| Sprint 2 | Pendiente de formular | 2026-10-19 | 2026-11-01 | 28 | 25 | `N/D` | `N/D` | `N/D` | `N/D` | — |
+| Sprint 3 | Pendiente de formular | 2026-11-02 | 2026-11-22 | 42 | 36 | `N/D` | `N/D` | `N/D` | `N/D` | — |
 
 ## Cómo cerrar una fila
 

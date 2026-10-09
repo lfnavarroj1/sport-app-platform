@@ -28,7 +28,9 @@ Una HU no se duplica en los tres repositorios. El issue central representa el va
 | Campo | Tipo | Uso |
 | --- | --- | --- |
 | Estado | Selección | Backlog, Preparada, En curso, En revisión, Aceptada, Bloqueada, Retirada |
-| Sprint | Iteración | periodo comprometido |
+| Sprint | Selección | Sprint 1, Sprint 2, Sprint 3 o Sin asignar |
+| Inicio del sprint | Fecha | inicio de la ventana temporal asignada |
+| Fin del sprint | Fecha | cierre de la ventana temporal asignada |
 | PHU | Número | estimación estable de la HU |
 | Valor | Número | prioridad/valor de negocio |
 | Ciclo | Selección | Reimplementación 2026; otros ciclos se agregarán solo cuando existan |
