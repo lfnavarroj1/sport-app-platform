@@ -1,0 +1,9 @@
+[submodule "components/backend"]
+	path = components/backend
+	url = https://github.com/lfnavarroj1/sport-app-backend.git
+[submodule "components/frontend"]
+	path = components/frontend
+	url = https://github.com/lfnavarroj1/sport-app-frontend.git
+[submodule "components/mobile"]
+	path = components/mobile
+	url = https://github.com/lfnavarroj1/sport-app-movil.git

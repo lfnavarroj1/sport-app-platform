@@ -1,0 +1,22 @@
+# Configuración y secretos locales
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+*.auto.tfvars
+*.auto.tfvars.json
+
+# Herramientas y sistema operativo
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
