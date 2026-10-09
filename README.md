@@ -32,7 +32,7 @@ flowchart TB
 ## Gestión del proyecto
 
 - La [wiki](https://github.com/lfnavarroj1/sport-app-platform/wiki) explica el proyecto, su arquitectura, avance, métricas y entregas.
-- El [GitHub Project](https://github.com/users/lfnavarroj1/projects/2) administra el backlog, los sprints, estados, responsables y evidencia.
+- El [GitHub Project SportApp Platform](https://github.com/users/lfnavarroj1/projects/4) administra el backlog vigente, los sprints, estados, responsables y evidencia.
 - El [manual de versiones](docs/manual-versionado.md) define la relación entre sprint, HU, ramas, versiones y releases.
 - La arquitectura detallada se publicará gradualmente en la wiki sin copiar las guías internas destinadas a agentes.
 

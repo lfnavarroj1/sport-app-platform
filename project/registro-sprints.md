@@ -2,7 +2,7 @@
 
 ## Línea base histórica importada
 
-Datos verificados el 9 de octubre de 2026 en el [Project 2 de SportApp-G9](https://github.com/users/lfnavarroj1/projects/2). La asignación y el estado `Done` pertenecen al ciclo de 2024; no representan el cierre de la reimplementación actual.
+Datos históricos verificados el 9 de octubre de 2026 en el Project 2 del equipo anterior. La asignación y el estado `Done` pertenecen al ciclo de 2024; no representan el cierre de la reimplementación actual ni se copiaron al [Project 4 vigente](https://github.com/users/lfnavarroj1/projects/4).
 
 | Sprint | Inicio histórico | Duración | HU asignadas | PHU de HU | Estado en Project 2 |
 | --- | --- | ---: | ---: | ---: | --- |
@@ -12,7 +12,11 @@ Datos verificados el 9 de octubre de 2026 en el [Project 2 de SportApp-G9](https
 | Sin asignar | — | — | 7 | 19 | Ausentes del Project 2 |
 | **Total** | — | **49 días** | **40** | **100** | **33 históricas; 7 sin asignar** |
 
-La relación detallada de HU por sprint está en [Planeación y sprints](https://github.com/lfnavarroj1/sport-app-platform/wiki/02-planeacion-y-sprints#historias-por-sprint).
+La relación detallada de HU por sprint está en [Planeación y sprints](../wiki/02-planeacion-y-sprints.md#historias-por-sprint).
+
+## Carga inicial del Project 4
+
+Las 40 HU se crearon nuevamente en `sport-app-platform`. HU001 inicia `En curso`; las otras 39 están en `Backlog`. La asignación por sprint se conserva como referencia inicial y debe ratificarse durante la planeación vigente.
 
 ## Cierres
 
@@ -50,7 +54,7 @@ Al cerrar el Sprint 1 se agrega una serie de PHU aceptados para convertirlo en u
 
 ```mermaid
 xychart-beta
-    title "PHU de HU en Project 2"
+    title "PHU de HU en Project 4"
     x-axis ["Sprint 1", "Sprint 2", "Sprint 3", "Sin asignar"]
     y-axis "PHU" 0 --> 40
     bar [20, 25, 36, 19]

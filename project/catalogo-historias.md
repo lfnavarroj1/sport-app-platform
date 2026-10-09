@@ -3,11 +3,11 @@
 ## Convenciones
 
 - `Valor`: puntuación de negocio de 1 a 10, pendiente de asignar por el responsable de producto.
-- `Sprint histórico`: iteración asignada en el [Project 2 de SportApp-G9](https://github.com/users/lfnavarroj1/projects/2), cuya planeación corresponde a 2024.
-- `Estado`: uno de los estados definidos en la [guía](../docs/guia-de-actualizacion.md#estados-permitidos).
+- `Sprint histórico`: iteración tomada como referencia del Project 2 del equipo anterior, cuya planeación corresponde a 2024. Esa asignación fue cargada como punto de partida en el [Project 4 vigente](https://github.com/users/lfnavarroj1/projects/4), sin copiar sus estados de ejecución.
+- `Estado`: uno de los estados definidos en la [guía](../documentacion/docs/guia-de-actualizacion.md#estados-permitidos).
 - `Aceptada`: fecha de aceptación; es la fecha que permite sumar PHU y valor.
 
-El estado `Done` del Project 2 es evidencia histórica y no reemplaza el estado verificable de la reimplementación actual. Las siete historias ausentes del tablero se mantienen como `N/D` hasta que el responsable de producto las asigne.
+El estado `Done` del Project 2 es evidencia histórica y no reemplaza el estado verificable de la reimplementación actual. Las 40 HU se crearon de nuevo en el Project 4; siete permanecen `Sin asignar` hasta que el responsable de producto defina su sprint.
 
 | HU | Nombre | Dominio | Canal | PHU | Valor | Sprint histórico | Estado al 2026-10-09 | Aceptada | Evidencia |
 | --- | --- | --- | --- | ---: | ---: | --- | --- | --- | --- |

@@ -30,7 +30,7 @@ flowchart LR
     D --> G --> E
 ```
 
-1. Revise el [GitHub Project](https://github.com/users/lfnavarroj1/projects/2) y actualice el catálogo de HU.
+1. Revise el [GitHub Project SportApp Platform](https://github.com/users/lfnavarroj1/projects/4) y actualice el catálogo de HU.
 2. Registre allí fechas, compromiso, versión objetivo y cierre del sprint.
 3. Durante el sprint actualice el saldo diario de burndown.
 4. Enlace resultados de CI, pruebas, cobertura y artefactos.

@@ -8,7 +8,7 @@ Cada registro incluye, cuando hay datos suficientes, un gráfico Mermaid junto c
 
 ## Destino remoto
 
-El repositorio público `sport-app-platform` se asociará al [Project 2 de SportApp-G9](https://github.com/users/lfnavarroj1/projects/2). Antes de reutilizar los ítems históricos se diferenciarán mediante campo o etiqueta los ciclos `Histórico 2024` y `Reimplementación 2026`.
+El repositorio público `sport-app-platform` está asociado exclusivamente al [Project 4: SportApp Platform](https://github.com/users/lfnavarroj1/projects/4), creado desde cero para la reimplementación. El Project 2 pertenece al equipo anterior, no está asociado al repositorio nuevo y no se reutilizan sus ítems ni sus estados. Sus datos solo pueden conservarse como referencia histórica explícita en la documentación.
 
 La propiedad de los ítems será:
 
@@ -31,7 +31,7 @@ Una HU no se duplica en los tres repositorios. El issue central representa el va
 | Sprint | Iteración | periodo comprometido |
 | PHU | Número | estimación estable de la HU |
 | Valor | Número | prioridad/valor de negocio |
-| Ciclo | Selección | Histórico 2024 o Reimplementación 2026 |
+| Ciclo | Selección | Reimplementación 2026; otros ciclos se agregarán solo cuando existan |
 | Repositorios afectados | Selección múltiple o etiquetas | backend, frontend, móvil, plataforma |
 | Versión objetivo | Texto/selección | tag de plataforma esperado |
 | Versión entregada | Texto | tag real que contiene la HU |
@@ -47,7 +47,7 @@ Una HU no se duplica en los tres repositorios. El issue central representa el va
 - HU bloqueadas y dependencias.
 - Trabajo por repositorio afectado.
 - Release actual con HU aceptadas y evidencia.
-- Histórico 2024 separado del ciclo vigente.
+- Referencias históricas fuera del tablero operativo vigente.
 
 | Registro | Contenido | Frecuencia |
 | --- | --- | --- |
@@ -65,4 +65,4 @@ Una HU no se duplica en los tres repositorios. El issue central representa el va
 - No cambie PHU durante el sprint.
 - No marque una HU como aceptada sin cumplir la definición de terminado.
 - Cada HU aceptada debe indicar la versión de plataforma donde fue entregada.
-- Cada sprint aceptado debe corresponder con una release según el [manual de versiones](../docs/manual-versionado.md).
+- Cada sprint aceptado debe corresponder con una release según el [manual de versiones](../documentacion/docs/manual-versionado.md).
