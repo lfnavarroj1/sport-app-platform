@@ -299,8 +299,9 @@ resource "google_billing_budget" "environment" {
     }
   }
 
+  # Montos absolutos convertidos a fracción del presupuesto, más el 100 %.
   dynamic "threshold_rules" {
-    for_each = [0.5, 0.9, 1.0]
+    for_each = length(each.value.budget_alert_amounts) > 0 ? distinct(concat([for a in each.value.budget_alert_amounts : a / each.value.budget_amount], [1.0])) : [0.5, 0.9, 1.0]
     content {
       threshold_percent = threshold_rules.value
     }

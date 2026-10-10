@@ -357,7 +357,7 @@ PostgreSQL, el emulador, los tópicos y los puertos de acceso están en `infra/k
 | Identidad | una cuenta de servicio por carga, con acceso solo a lo de su dominio |
 | Operación | Artifact Registry con limpieza, Secret Manager y alertas |
 
-El módulo rechaza el plan si falta la protección contra borrado, Cloud SQL regional o PITR.
+El módulo rechaza el plan si falta Cloud SQL regional o PITR. También lo rechaza sin protección contra borrado, salvo en una destrucción controlada con `destroy_confirmation` igual al ID del proyecto ([guía de preparación, sección 9](../../docs/preparacion-terraform-local-gcp.md#9-apagar-y-volver-a-encender)).
 
 ### 6.2 Variables y credenciales
 
@@ -392,7 +392,7 @@ gcloud version
 
 ### 6.4 Preparar los proyectos
 
-Una sola vez. Se necesitan dos proyectos: **gestión** (estado e identidades; nunca se destruye) y **producción**. Los ID son únicos a nivel global.
+Una sola vez. Se necesitan dos proyectos: **gestión** (estado e identidades; nunca se destruye) y **producción**. Los ID son únicos a nivel global. Puedes definirlos directamente en la terminal o guardarlos en `platform\.env.ps1` (local, ignorado por Git) y cargarlos con `. .\.env.ps1` ([guía de preparación, sección 5.1](../../docs/preparacion-terraform-local-gcp.md#51-decidir-los-identificadores)). El ejemplo usa valores literales.
 
 ```powershell
 gcloud auth login
@@ -485,6 +485,8 @@ Si `cloud_run_images` está vacío, no se crea ningún servicio Cloud Run. Esto 
 | Agregar un secreto de aplicación | `app_secrets` |
 | Variables de un BFF | `cloud_run_env` |
 | Versión de un BFF o de la web | `cloud_run_images` ([8.3](#83-desplegar-en-cloud-run)) |
+| Suspender o reanudar producción | `suspended` en `terraform.tfvars` ([guía de preparación, sección 9.2](../../docs/preparacion-terraform-local-gcp.md#92-producción-suspender)) |
+| Destruir producción | `-var deletion_protection=false -var destroy_confirmation=<proyecto>` ([guía de preparación, sección 9.3](../../docs/preparacion-terraform-local-gcp.md#93-producción-destruir)) |
 
 ## 7. Producción desde GitHub Actions
 
