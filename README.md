@@ -33,6 +33,8 @@ flowchart TB
 
 Para trabajar solo en Terraform o en la plataforma, clone el repositorio como carpeta hermana de los demás proyectos. Este comando **no** descarga el contenido de los submódulos:
 
+> Procedimiento completo: [Guía de clonado seguro](docs/guia-clonado-seguro.md).
+
 ```text
 git clone --no-recurse-submodules https://github.com/lfnavarroj1/sport-app-platform.git platform
 cd platform
