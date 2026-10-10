@@ -205,7 +205,9 @@ La deshabilitación de facturación se reserva para una emergencia: Google detie
 
 ## Estado de implementación
 
-La decisión y la arquitectura están aprobadas. La creación de los módulos, raíces, bootstrap y workflows todavía está pendiente; por tanto, los diagramas describen el destino verificable y no un despliegue GCP ya operativo.
+La decisión y la arquitectura están aprobadas. Desde el 2026-10-10, `infra/terraform/` contiene el bootstrap (`bootstrap/gcp-state`), los módulos GCP y las raíces `development` y `production`. Su uso y los supuestos pendientes de ratificar se describen en [`infra/terraform/README.md`](../infra/terraform/README.md).
+
+El código se verificó con `terraform validate` y con `terraform test` usando proveedores simulados. Todavía no se ha aplicado en GCP, por lo que no existe un ambiente operativo. Siguen pendientes las raíces `staging` y `local`, los workflows y los manifiestos Kubernetes de GCP.
 
 Antes de implementar, complete la [Preparación local y de GCP para Terraform](preparacion-terraform-local-gcp.md). Esa guía evita iniciar con proyectos, credenciales, estado o presupuestos incompletos.
 

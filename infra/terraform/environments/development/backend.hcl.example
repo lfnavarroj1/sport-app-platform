@@ -1,0 +1,9 @@
+# Copiar como backend.hcl (ignorado por Git) y ejecutar:
+#   terraform init -backend-config=backend.hcl
+#
+# Salida "state_buckets.development" del bootstrap.
+bucket = "sportapp-mgmt-000000-tfstate-development"
+
+# Solo en local: misma cuenta que impersonate_service_account en gcp.auto.tfvars.
+# En CI se elimina esta línea; las credenciales provienen de WIF.
+impersonate_service_account = "tf-apply-development@sportapp-mgmt-000000.iam.gserviceaccount.com"
