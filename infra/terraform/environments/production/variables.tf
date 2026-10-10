@@ -45,6 +45,18 @@ variable "region" {
   type        = string
 }
 
+variable "suspended" {
+  description = "Modo suspend: Cloud SQL detenido, Cloud Run con mínimo 0 y GKE con 0 nodos. Se pasa con -var al suspender."
+  type        = bool
+  default     = false
+}
+
+variable "destroy_confirmation" {
+  description = "ID del proyecto; solo para desactivar la protección antes de una destrucción controlada."
+  type        = string
+  default     = ""
+}
+
 variable "deletion_protection" {
   description = "Protege GKE, Cloud SQL y Cloud Run contra eliminación."
   type        = bool

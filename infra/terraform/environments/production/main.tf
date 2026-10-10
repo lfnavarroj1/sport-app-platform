@@ -16,6 +16,8 @@ module "platform" {
   environment               = local.environment
   labels                    = local.labels
   deletion_protection       = var.deletion_protection
+  destroy_confirmation      = var.destroy_confirmation
+  suspended                 = var.suspended
   network                   = var.network
   gke                       = var.gke
   gke_authorized_networks   = var.gke_authorized_networks

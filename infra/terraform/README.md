@@ -65,6 +65,7 @@ Desarrollo no usa GCP ni credenciales en la nube. Implementa la [arquitectura Te
 | Depurar un microservicio desde el IDE con la base de datos y Pub/Sub locales | [4.6](#46-ejecutar-un-componente-en-el-host) |
 | Crear o cambiar la infraestructura de producción | [6](#6-producción-en-gcp-paso-a-paso) |
 | Publicar una versión en producción | [8](#8-cómo-llegan-backend-y-frontend-a-producción) |
+| Apagar o volver a encender un ambiente (suspender o destruir producción) | [guía de preparación, sección 9](../../docs/preparacion-terraform-local-gcp.md#9-apagar-y-volver-a-encender) |
 
 ### 1.2 Conceptos mínimos
 

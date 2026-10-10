@@ -33,6 +33,10 @@ La decisión de ambientes está en ADR-022: desarrollo es local y GCP se usa sol
 6. [Qué archivos van a Git](#6-qué-archivos-van-a-git)
 7. [Lista de verificación](#7-lista-de-verificación)
 8. [Problemas frecuentes](#8-problemas-frecuentes)
+9. [Apagar y volver a encender](#9-apagar-y-volver-a-encender)
+   - [9.1 Desarrollo local](#91-desarrollo-local)
+   - [9.2 Producción: suspender](#92-producción-suspender)
+   - [9.3 Producción: destruir](#93-producción-destruir)
 
 ## 1. Ambientes
 
@@ -194,13 +198,33 @@ Esta preparación se hace **una sola vez** y modifica recursos facturables. Ejec
 
 ### 5.1 Decidir los identificadores
 
-Los ID de proyecto son únicos a nivel global y no se pueden cambiar. Define los valores en tu sesión de PowerShell:
+Los ID de proyecto son únicos a nivel global y no se pueden cambiar. Son identificadores, no secretos. Hay dos formas de definirlos.
+
+**Opción A: directamente en la terminal.** Se pierden al cerrar PowerShell.
 
 ```powershell
 $billing    = "XXXXXX-XXXXXX-XXXXXX"     # gcloud billing accounts list
 $mgmt       = "sportapp-mgmt-1234"       # estado e identidades; nunca se destruye
 $production = "sportapp-prod-1234"       # cargas de producción
 ```
+
+**Opción B: guardados en `platform\.env.ps1` y cargados en cada terminal.** El archivo es local: Git lo ignora porque el `.gitignore` excluye `.env.*`. Nunca pongas llaves ni tokens en él.
+
+```powershell
+# platform\.env.ps1
+$billing    = "XXXXXX-XXXXXX-XXXXXX"
+$mgmt       = "sportapp-mgmt-1234"
+$production = "sportapp-prod-1234"
+```
+
+Para cargarlo, desde `platform`, usa *dot-sourcing*. El punto inicial deja las variables en la sesión actual:
+
+```powershell
+. .\.env.ps1
+$production      # comprobación
+```
+
+Estas variables solo las usan los comandos `gcloud` y las secciones [5](#5-plataforma-gcp-producción) y [9](#9-apagar-y-volver-a-encender). Terraform no las lee: toma sus valores de `bootstrap.auto.tfvars`, `gcp.auto.tfvars` y `backend.hcl`.
 
 La región adoptada es `us-central1`. Antes de usarla, confirma los requisitos de residencia de datos, latencia y costo.
 
@@ -376,6 +400,92 @@ El `.gitignore` de la plataforma ya cubre todos los casos. Antes de un commit, r
 | `gcloud projects create` falla por el ID | el ID ya existe en GCP | elige otro sufijo |
 | 403 al impersonar | tu usuario no está en `operators` | agrégalo en `bootstrap.auto.tfvars` y aplica el bootstrap |
 | `Error: Failed to get existing workspaces` en `init` | el bucket de `backend.hcl` es incorrecto | copia `state_buckets.production` |
+
+## 9. Apagar y volver a encender
+
+Antes de empezar, define los identificadores en la terminal o cárgalos desde `platform`, como en [5.1](#51-decidir-los-identificadores):
+
+```powershell
+. .\.env.ps1
+```
+
+| Situación | Ambiente | Modo | Costo mientras está apagado |
+| --- | --- | --- | --- |
+| Terminar la jornada | desarrollo | detener Docker Desktop | ninguno |
+| Liberar el equipo o empezar de cero | desarrollo | `terraform destroy` | ninguno |
+| Pausa corta conservando datos | producción | suspender ([9.2](#92-producción-suspender)) | tarifa del clúster GKE (unos USD 73 al mes, según la estimación de costos), almacenamiento y respaldos de Cloud SQL, Artifact Registry y logs |
+| Pausa larga o fin del periodo | producción | destruir ([9.3](#93-producción-destruir)) | casi cero: solo el bucket de estado del proyecto de gestión |
+
+### 9.1 Desarrollo local
+
+| Quiero… | Cómo | Qué se conserva |
+| --- | --- | --- |
+| Pausar | cerrar Docker Desktop (*Quit Docker Desktop*); al abrirlo, Kubernetes vuelve a levantar los pods | todo |
+| Apagar y borrar | `terraform destroy` en `infra\terraform\environments\local` | nada: se borran el namespace y los datos de PostgreSQL |
+| Volver a encender tras destruir | `terraform apply` en la misma carpeta | base vacía y contraseñas nuevas |
+
+### 9.2 Producción: suspender
+
+Suspender detiene Cloud SQL, deja Cloud Run con mínimo 0 instancias y lleva el grupo de nodos de GKE a 0. Se conservan la red, el clúster, la base de datos, los secretos y las imágenes.
+
+1. En `infra\terraform\environments\production\terraform.tfvars`, agrega o cambia la línea:
+
+   ```hcl
+   suspended = true
+   ```
+
+   El estado queda en un archivo versionado para que cualquier `plan`, incluido el de CI, lo respete. Un `plan` sin esa línea reanudaría producción.
+
+2. Genera el plan, revísalo y aplícalo:
+
+   ```powershell
+   cd infra\terraform\environments\production
+   terraform plan -out=tfplan
+   terraform show tfplan     # Cloud SQL con activation_policy NEVER, Cloud Run con mínimo 0, nodos en 0
+   terraform apply tfplan
+   ```
+
+3. Verifica:
+
+   ```powershell
+   gcloud sql instances list --project $production                 # estado STOPPED
+   gcloud compute instances list --project $production             # sin nodos gke-*
+   ```
+
+**Reanudar:** cambia a `suspended = false`, genera el plan y aplícalo. Cloud SQL arranca en unos minutos, Cloud Run vuelve a su mínimo y GKE recupera el autoescalado. Los nodos regresan cuando hay pods pendientes, así que las cargas de GKE pueden tardar unos minutos en estar listas.
+
+### 9.3 Producción: destruir
+
+Destruir elimina todos los recursos del proyecto de producción. **Se pierden** los datos de Cloud SQL, que se borran junto con sus respaldos, las imágenes de Artifact Registry y los valores de los secretos de aplicación. **Se conservan** el proyecto de gestión, el bucket de estado, las cuentas `tf-*` y `ci-delivery-*`, el presupuesto y el proyecto de producción vacío con sus APIs habilitadas.
+
+1. **Opcional: conserva los datos.** Exporta antes las bases que quieras guardar con `gcloud sql export sql` hacia un bucket que no pertenezca a la raíz de producción.
+
+2. **Desactiva la protección contra borrado.** El módulo solo lo permite si escribes el ID del proyecto como confirmación:
+
+   ```powershell
+   cd infra\terraform\environments\production
+   terraform plan -var="deletion_protection=false" -var="destroy_confirmation=$production" -out=tfplan
+   terraform apply tfplan
+   ```
+
+3. **Destruye** con un plan revisado, usando las mismas variables:
+
+   ```powershell
+   terraform plan -destroy -var="deletion_protection=false" -var="destroy_confirmation=$production" -out=tfplan-destroy
+   terraform show tfplan-destroy
+   terraform apply tfplan-destroy
+   ```
+
+   Si falla la conexión de Private Services Access porque Cloud SQL acaba de eliminarse, repite este paso unos minutos después.
+
+4. **Verifica:**
+
+   ```powershell
+   gcloud container clusters list --project $production    # vacío
+   gcloud sql instances list --project $production         # vacío
+   ```
+
+**Volver a encender:** ejecuta `terraform plan -out=tfplan` y `terraform apply tfplan` **sin** esas variables. La protección contra borrado vuelve a activarse desde `terraform.tfvars`. La primera aplicación tarda entre 20 y 30 minutos. Después hay que volver a publicar las imágenes, cargar los valores de los secretos de aplicación y desplegar las cargas. Las contraseñas de base de datos son nuevas y la base queda vacía, salvo que restaures la exportación del paso 1.
 
 ## Referencias oficiales
 

@@ -74,7 +74,7 @@ No se mantienen copias de `README.md`, `docs/` ni `project/` dentro de `document
 
 Terraform, la composición por ambiente y la promoción coordinada pertenecen a `sport-app-platform` porque afectan conjuntamente backend, frontend y servicios compartidos. Cada componente conserva sus `Dockerfile`, pruebas, migraciones y configuración interna. El [ambiente de desarrollo corre en local](infra/terraform/README.md#4-desarrollo-local-paso-a-paso), en el Kubernetes kubeadm de Docker Desktop, y [producción en GCP](infra/terraform/README.md#6-producción-en-gcp-paso-a-paso). Antes del primer `apply`, cada plataforma se prepara con la [guía de preparación](docs/preparacion-terraform-local-gcp.md). La guía de Terraform explica cómo crear cada ambiente y cómo se actualizan backend y frontend. Producción todavía no se ha aplicado; siguen pendientes `staging` y los workflows.
 
-Desarrollo es desechable y no genera costos de nube: `terraform destroy` lo elimina del clúster local y `terraform apply` lo reconstruye. Producción no se suspende ni se destruye desde Terraform. Deshabilitar la facturación se reserva para emergencias; la [arquitectura Terraform](docs/arquitectura-terraform.md) contiene los controles de presupuesto.
+Desarrollo es desechable y no genera costos de nube: `terraform destroy` lo elimina del clúster local y `terraform apply` lo reconstruye. Producción puede suspenderse (Cloud SQL detenido, Cloud Run y nodos GKE en 0) o destruirse con confirmación explícita, según la [sección 9 de la guía de preparación](docs/preparacion-terraform-local-gcp.md#9-apagar-y-volver-a-encender). Deshabilitar la facturación se reserva para emergencias; la [arquitectura Terraform](docs/arquitectura-terraform.md) contiene los controles de presupuesto.
 
 ## Estado
 
