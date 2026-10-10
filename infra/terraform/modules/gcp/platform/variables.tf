@@ -29,20 +29,21 @@ variable "deletion_protection" {
   type        = bool
 
   validation {
-    condition     = var.environment != "production" || var.deletion_protection
-    error_message = "Producción exige deletion_protection = true."
+    condition     = var.environment != "production" || var.deletion_protection || var.destroy_confirmation == var.project_id
+    error_message = "Producción exige deletion_protection = true, salvo que destroy_confirmation sea el ID del proyecto (destrucción controlada)."
   }
 }
 
+variable "destroy_confirmation" {
+  description = "ID del proyecto, escrito a mano, para permitir desactivar la protección de producción antes de destruirla."
+  type        = string
+  default     = ""
+}
+
 variable "suspended" {
-  description = "Modo suspend: detiene Cloud SQL y lleva Cloud Run a mínimo 0. GKE se reduce escalando las cargas a 0."
+  description = "Modo suspend: Cloud SQL detenido, Cloud Run con mínimo 0 y GKE con 0 nodos."
   type        = bool
   default     = false
-
-  validation {
-    condition     = var.environment != "production" || !var.suspended
-    error_message = "Producción no se suspende."
-  }
 }
 
 variable "network" {

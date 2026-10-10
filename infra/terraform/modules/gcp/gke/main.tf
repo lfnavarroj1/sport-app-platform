@@ -109,14 +109,20 @@ resource "google_container_node_pool" "primary" {
   cluster  = google_container_cluster.this.id
   location = var.location
 
-  # Totales del grupo (no por zona). min 0 permite suspender el ambiente
-  # escalando las cargas a cero; el autoscaler retira entonces los nodos.
   initial_node_count = 1 # por zona; luego decide el autoscaler
 
-  autoscaling {
-    total_min_node_count = var.node_pool.min_nodes
-    total_max_node_count = var.node_pool.max_nodes
-    location_policy      = "ANY"
+  # Suspendido: sin autoescalado y 0 nodos por zona. Al reanudar vuelve el
+  # autoescalado y los nodos regresan cuando hay pods pendientes.
+  node_count = var.suspended ? 0 : null
+
+  # Totales del grupo, no por zona.
+  dynamic "autoscaling" {
+    for_each = var.suspended ? [] : [1]
+    content {
+      total_min_node_count = var.node_pool.min_nodes
+      total_max_node_count = var.node_pool.max_nodes
+      location_policy      = "ANY"
+    }
   }
 
   management {

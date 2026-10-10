@@ -28,9 +28,11 @@ gke_authorized_networks = [
   # { cidr_block = "203.0.113.10/32", display_name = "operador" },
 ]
 
-# Producción no recibe builds: las imágenes se copian por digest desde
-# desarrollo (ver README, promoción). Normalmente se deja vacío.
-artifact_registry_writers = {}
+# Cuenta con la que los workflows de release de backend/frontend publican
+# imágenes (salida "delivery_service_accounts.production" del bootstrap).
+artifact_registry_writers = {
+  component-ci = "serviceAccount:ci-delivery-production@sportapp-mgmt-000000.iam.gserviceaccount.com"
+}
 
 labels = {
   owner = "equipo-sportapp"

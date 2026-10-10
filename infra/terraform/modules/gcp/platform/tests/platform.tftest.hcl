@@ -17,7 +17,7 @@ mock_provider "google" {
 variables {
   project_id          = "sportapp-test"
   region              = "us-central1"
-  environment         = "development"
+  environment         = "staging"
   deletion_protection = false
 
   network = {
@@ -162,4 +162,72 @@ run "produccion_exige_protecciones" {
   }
 
   expect_failures = [var.deletion_protection, var.cloud_sql]
+}
+
+run "produccion_suspendida" {
+  command = plan
+
+  variables {
+    environment         = "production"
+    deletion_protection = true
+    suspended           = true
+    cloud_sql = {
+      database_version               = "POSTGRES_17"
+      tier                           = "db-custom-2-7680"
+      availability_type              = "REGIONAL"
+      disk_size_gb                   = 20
+      disk_autoresize_limit_gb       = 200
+      backups_enabled                = true
+      point_in_time_recovery         = true
+      retained_backups               = 14
+      transaction_log_retention_days = 7
+      password_version               = 1
+    }
+  }
+}
+
+run "produccion_destruccion_sin_confirmacion_valida" {
+  command = plan
+
+  variables {
+    environment          = "production"
+    deletion_protection  = false
+    destroy_confirmation = "otro-proyecto"
+    cloud_sql = {
+      database_version               = "POSTGRES_17"
+      tier                           = "db-custom-2-7680"
+      availability_type              = "REGIONAL"
+      disk_size_gb                   = 20
+      disk_autoresize_limit_gb       = 200
+      backups_enabled                = true
+      point_in_time_recovery         = true
+      retained_backups               = 14
+      transaction_log_retention_days = 7
+      password_version               = 1
+    }
+  }
+
+  expect_failures = [var.deletion_protection]
+}
+
+run "produccion_destruccion_confirmada" {
+  command = plan
+
+  variables {
+    environment          = "production"
+    deletion_protection  = false
+    destroy_confirmation = "sportapp-test"
+    cloud_sql = {
+      database_version               = "POSTGRES_17"
+      tier                           = "db-custom-2-7680"
+      availability_type              = "REGIONAL"
+      disk_size_gb                   = 20
+      disk_autoresize_limit_gb       = 200
+      backups_enabled                = true
+      point_in_time_recovery         = true
+      retained_backups               = 14
+      transaction_log_retention_days = 7
+      password_version               = 1
+    }
+  }
 }

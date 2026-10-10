@@ -1,0 +1,25 @@
+# Ajustes personales del ambiente local. Opcional: sin este archivo se usan
+# los valores por defecto de variables.tf.
+#
+#   Copy-Item local.auto.tfvars.example local.auto.tfvars   (ignorado por Git)
+#
+# No contiene credenciales: las contraseñas se generan en cada ambiente nuevo
+# y no se guardan en el estado.
+
+# Carpeta del repositorio backend, relativa a esta carpeta.
+#   clon hermano (por defecto): "../../../../../backend"
+#   submódulo de integración:   "../../../../components/backend"
+backend_path = "../../../../../backend"
+
+# Tag con el que se construyeron las imágenes (scripts/task.py build --tag).
+backend_image_tag = "local"
+
+# Solo los componentes reconstruidos con otro tag.
+backend_image_tags = {
+  # users-management = "dev-20261010-1530"
+}
+
+# false: solo PostgreSQL y Pub/Sub, para ejecutar un componente en el host.
+deploy_backend = true
+
+log_level = "INFO"

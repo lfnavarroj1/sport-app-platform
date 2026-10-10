@@ -12,7 +12,7 @@ Este registro conserva la evidencia que se enlaza desde el tablero y la wiki.
 
 | Fecha | Sprint | Repositorio | Commit | Ejecución CI | Pruebas aprobadas/total | Cobertura sentencias | Cobertura ramas | Vulnerabilidades bloqueantes | Defectos abiertos | Artefacto | Resultado |
 | --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
-| `AAAA-MM-DD` | Sprint 1 | Pendiente | `N/D` | `N/D` | `N/D` | `N/D` | `N/D` | `N/D` | `N/D` | `N/D` | `N/D` |
+| 2026-10-09 | Sprint 1 | Backend | `d13587d` (merge simulado con `develop`: `aaac9cf`) | [PR #1, ejecución 38017064718](https://github.com/lfnavarroj1/sport-app-backend/actions/runs/38017064718) | 157/157 (117 unitarias, 26 integración, 12 contrato, 2 componente) | 96,9 % | 89,2 % | 0 | `N/D` | 8 imágenes construidas sin publicar; `coverage.xml` como artefacto (expira 2026-11-09) | Aprobado en CI; HU001 sigue abierta al 50 % |
 
 Cada fila debe corresponder a una revisión inmutable. No combine cobertura de commits distintos ni copie un porcentaje sin conservar el reporte que lo produjo.
 

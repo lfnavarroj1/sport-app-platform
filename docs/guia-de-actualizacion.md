@@ -1,10 +1,10 @@
 # Guía de actualización de avances
 
-Este archivo se publicará como `docs/guia-de-actualizacion.md` en `sport-app-platform`.
+Este archivo se mantiene directamente como `docs/guia-de-actualizacion.md` en `sport-app-platform`.
 
 ## Cuándo actualizar
 
-Actualice esta carpeta en cuatro momentos:
+Actualice los registros de `project/` en cuatro momentos:
 
 1. al planear un sprint;
 2. diariamente, solo para el burndown del sprint;
@@ -30,11 +30,11 @@ flowchart LR
     D --> G --> E
 ```
 
-1. Revise el [GitHub Project SportApp Platform](https://github.com/users/lfnavarroj1/projects/4) y actualice el catálogo de HU.
+1. Revise el [GitHub Project SportApp Platform](https://github.com/users/lfnavarroj1/projects/4) y actualice `project/catalogo-historias.md` cuando corresponda conservar evidencia.
 2. Registre allí fechas, compromiso, versión objetivo y cierre del sprint.
 3. Durante el sprint actualice el saldo diario de burndown.
 4. Enlace resultados de CI, pruebas, cobertura y artefactos.
-5. Actualice las páginas de [métricas](https://github.com/lfnavarroj1/sport-app-platform/wiki/04-metricas-y-graficos) y [calidad](https://github.com/lfnavarroj1/sport-app-platform/wiki/05-calidad-pruebas-y-cobertura).
+5. Actualice las páginas de [métricas](https://github.com/lfnavarroj1/sport-app-platform/wiki/04-metricas-y-graficos) y [calidad](https://github.com/lfnavarroj1/sport-app-platform/wiki/05-calidad-pruebas-y-cobertura) desde la única fuente local de Wiki: `documentacion/presentacion-proyecto/wiki/`.
 6. Revise el resumen, los riesgos y los próximos pasos.
 7. Cree una copia fechada a partir de la plantilla publicada en la wiki.
 

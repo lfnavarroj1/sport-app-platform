@@ -63,6 +63,12 @@ variable "node_pool" {
   }
 }
 
+variable "suspended" {
+  description = "Deja el grupo de nodos en 0 (modo suspend)."
+  type        = bool
+  default     = false
+}
+
 variable "deletion_protection" {
   description = "Impide que Terraform elimine el clúster."
   type        = bool

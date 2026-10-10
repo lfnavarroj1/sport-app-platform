@@ -1,0 +1,18 @@
+# Dependencias compartidas del ambiente de desarrollo local (Docker Desktop).
+# No se aplica por separado: Terraform (infra/terraform/environments/local) lo
+# compone con los manifiestos base del backend, el ConfigMap sportapp-runtime y
+# el Secret sportapp-database.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - postgres.yaml
+  - pubsub-emulator.yaml
+  - pubsub-init.yaml
+  - access.yaml
+configMapGenerator:
+  - name: postgres-init
+    files:
+      - postgres-init/01-create-domain-databases.sh
+  - name: pubsub-init
+    files:
+      - pubsub-init/create-resources.sh

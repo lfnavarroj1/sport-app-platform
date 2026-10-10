@@ -122,6 +122,7 @@ module "gke" {
   release_channel            = var.gke.release_channel
   master_authorized_networks = var.gke_authorized_networks
   deletion_protection        = var.deletion_protection
+  suspended                  = var.suspended
   labels                     = var.labels
 
   node_pool = {
