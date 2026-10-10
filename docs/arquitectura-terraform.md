@@ -211,6 +211,8 @@ Antes del primer `apply`, complete la [Preparación local y de GCP para Terrafor
 
 La raíz `local` se aplicó en Docker Desktop y se verificó con un registro de usuario de punta a punta (BFF, servicio, PostgreSQL, outbox y Pub/Sub). La raíz de producción se verificó con `terraform validate` y `terraform test` con proveedores simulados, pero todavía no se ha aplicado en GCP. Siguen pendientes `staging`, los workflows y el overlay Kubernetes de producción.
 
+Antes de implementar, complete la [Preparación local y de GCP para Terraform](preparacion-terraform-local-gcp.md). Esa guía evita iniciar con proyectos, credenciales, estado o presupuestos incompletos.
+
 ## Referencias
 
 - [Google Cloud: prácticas recomendadas para módulos raíz](https://docs.cloud.google.com/docs/terraform/best-practices/root-modules)

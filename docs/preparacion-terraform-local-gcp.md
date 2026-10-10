@@ -2,386 +2,475 @@
 
 ## Propósito
 
-Esta guía deja lista cada plataforma antes del primer `terraform apply` de SportApp:
+Preparar una estación Windows, el entorno local Kubernetes y Google Cloud antes de crear o aplicar la infraestructura Terraform de SportApp. Esta guía no aprovisiona recursos por sí sola ni autoriza un despliegue en producción.
 
-- **Local (desarrollo):** Kubernetes de Docker Desktop aprovisionado con **kubeadm**. No requiere credenciales de nube.
-- **GCP (producción):** proyectos, facturación, autenticación sin llaves y los archivos de variables donde se indica la cuenta y el proyecto.
+Terraform se ejecutará desde `sport-app-platform/infra/terraform/`. Backend, frontend y móvil no almacenan estado, credenciales ni infraestructura transversal.
 
-La decisión de ambientes está en ADR-022: desarrollo es local y GCP se usa solo para producción. La operación diaria (crear, actualizar y destruir ambientes) está en la [guía de Terraform](../infra/terraform/README.md) de `sport-app-platform`.
+## Resultado esperado
 
-## Tabla de contenido
+Al terminar debe existir:
 
-1. [Ambientes](#1-ambientes)
-2. [Clonar la plataforma](#2-clonar-la-plataforma)
-3. [Herramientas de la estación](#3-herramientas-de-la-estación)
-4. [Plataforma local: Kubernetes kubeadm en Docker Desktop](#4-plataforma-local-kubernetes-kubeadm-en-docker-desktop)
-   - [4.1 Preparar Docker Desktop](#41-preparar-docker-desktop)
-   - [4.2 Activar Kubernetes con kubeadm](#42-activar-kubernetes-con-kubeadm)
-   - [4.3 Verificar que el clúster es kubeadm](#43-verificar-que-el-clúster-es-kubeadm)
-   - [4.4 Preparar el backend y sus imágenes](#44-preparar-el-backend-y-sus-imágenes)
-   - [4.5 Archivo de variables local](#45-archivo-de-variables-local)
-   - [4.6 Primer apply](#46-primer-apply)
-5. [Plataforma GCP: producción](#5-plataforma-gcp-producción)
-   - [5.1 Decidir los identificadores](#51-decidir-los-identificadores)
-   - [5.2 Crear los proyectos y vincular la facturación](#52-crear-los-proyectos-y-vincular-la-facturación)
-   - [5.3 Autenticarse sin llaves](#53-autenticarse-sin-llaves)
-   - [5.4 Completar bootstrap.auto.tfvars](#54-completar-bootstrapautotfvars)
-   - [5.5 Ejecutar el bootstrap](#55-ejecutar-el-bootstrap)
-   - [5.6 Completar gcp.auto.tfvars y backend.hcl](#56-completar-gcpautotfvars-y-backendhcl)
-   - [5.7 Verificar el acceso](#57-verificar-el-acceso)
-   - [5.8 Preparar GitHub Actions](#58-preparar-github-actions)
-6. [Qué archivos van a Git](#6-qué-archivos-van-a-git)
-7. [Lista de verificación](#7-lista-de-verificación)
-8. [Problemas frecuentes](#8-problemas-frecuentes)
+- un clon seguro de `sport-app-platform` sin los submódulos inicializados;
+- Terraform, Google Cloud CLI, Docker Desktop, `kubectl`, Git y GitHub CLI disponibles;
+- Kubernetes local activo en el contexto esperado;
+- proyectos GCP separados para gestión, desarrollo y producción;
+- facturación, presupuestos y APIs controlados;
+- autenticación local mediante Application Default Credentials —preferiblemente con suplantación—;
+- Workload Identity Federation para GitHub Actions, sin llaves JSON;
+- buckets GCS de estado creados mediante bootstrap, con versionado, bloqueo y acceso mínimo;
+- archivos de variables no sensibles y ejemplos versionados;
+- secretos fuera de `.tf`, `.tfvars`, planes, estado y Git.
 
-## 1. Ambientes
+## 1. Estructura de ambientes
 
-| | Desarrollo | Producción |
-| --- | --- | --- |
-| Plataforma | Kubernetes kubeadm de Docker Desktop | Google Cloud Platform |
-| Raíz Terraform | `infra/terraform/environments/local` | `infra/terraform/environments/production` |
-| Preparación única | activar Kubernetes ([4](#4-plataforma-local-kubernetes-kubeadm-en-docker-desktop)) | proyectos y bootstrap ([5](#5-plataforma-gcp-producción)) |
-| Credenciales | ninguna | tu sesión de Google con impersonación, o WIF en CI |
-| Archivos que completas | `local.auto.tfvars` (opcional) | `bootstrap.auto.tfvars`, `gcp.auto.tfvars` y `backend.hcl` |
-| Estado Terraform | archivo local ignorado por Git | bucket GCS del proyecto de gestión |
-| Costo | ninguno en la nube | facturado por GCP |
+```mermaid
+flowchart TB
+    PC["Estación local<br/>Terraform, gcloud, Docker y kubectl"]
+    GH["GitHub Actions<br/>OIDC/WIF"]
+    MGMT["Proyecto de gestión<br/>estado, identidades y presupuestos"]
+    DEV["Proyecto development<br/>recreable"]
+    PROD["Proyecto production<br/>protegido"]
+    K8S["Kubernetes local<br/>sin GCP"]
 
-`staging` no existe todavía.
+    PC --> K8S
+    PC -->|ADC e impersonación| MGMT
+    GH -->|credenciales temporales| MGMT
+    MGMT --> DEV
+    MGMT --> PROD
+```
 
-## 2. Clonar la plataforma
+| Ambiente | Uso | Quién puede aplicar | Ciclo |
+| --- | --- | --- | --- |
+| `local` | aprendizaje, composición y pruebas sin nube | desarrollador o CI local | desechable |
+| `development` | integración con servicios reales GCP | identidad técnica aprobada | crear y destruir bajo demanda |
+| `production` | operación estable | pipeline protegido con aprobación | persistente; sin destrucción programada |
 
-Clona la plataforma como carpeta hermana de los repositorios de componentes, sin inicializar submódulos:
+## 2. Clonar solamente la plataforma
+
+Desde la carpeta que contiene los repositorios:
 
 ```powershell
-cd "D:\04 - Mestría en Ingeniería de Software\08 - Ciclo 8\Proyecto final II\aplicacion_proyecto_final"
-git clone --no-recurse-submodules https://github.com/lfnavarroj1/sport-app-platform.git platform
-cd platform
+git clone --no-recurse-submodules https://github.com/lfnavarroj1/sport-app-platform.git
+cd sport-app-platform
+
 git config --local submodule.recurse false
 git config --local fetch.recurseSubmodules false
 git config --local push.recurseSubmodules no
-git submodule status        # las tres líneas deben comenzar con "-"
+git submodule status
 ```
 
-Estructura esperada:
+Las tres líneas de `git submodule status` deben comenzar con `-`. Consulte la [guía de clonado seguro](guia-clonado-seguro.md) antes de crear una rama.
+
+## 3. Preparar la estación local
+
+### Herramientas necesarias
+
+| Herramienta | Uso | Verificación |
+| --- | --- | --- |
+| Terraform CLI | formato, validación, plan y apply | `terraform version` |
+| Google Cloud CLI | proyectos, ADC, APIs y diagnóstico | `gcloud version` |
+| Docker Desktop | contenedores y Kubernetes local | `docker version` |
+| `kubectl` | verificar el clúster local | `kubectl version --client` |
+| Git | ramas y revisiones | `git version` |
+| GitHub CLI | autenticación y evidencia de PR/workflow | `gh --version` |
+
+Instale Terraform desde la [distribución oficial](https://developer.hashicorp.com/terraform/install) y Google Cloud CLI desde la [guía oficial](https://docs.cloud.google.com/sdk/docs/install-sdk). Cierre y vuelva a abrir PowerShell después de modificar el `PATH`.
+
+Verificación conjunta:
+
+```powershell
+terraform version
+gcloud version
+docker version
+kubectl version --client
+git version
+gh --version
+```
+
+La versión de Terraform admitida se fija posteriormente en `required_version`; la selección del proveedor se fija en `.terraform.lock.hcl`. No se depende de «la última versión» sin revisión.
+
+## 4. Preparar Kubernetes local
+
+En Docker Desktop:
+
+1. use contenedores Linux;
+2. abra **Kubernetes**;
+3. cree o habilite el clúster;
+4. espere a que aparezca como operativo;
+5. compruebe explícitamente el contexto antes de aplicar.
+
+```powershell
+kubectl config get-contexts
+kubectl config use-context docker-desktop
+kubectl cluster-info
+kubectl get nodes
+```
+
+Regla de seguridad: la raíz `environments/local` debe rechazar cualquier contexto diferente del contexto local aprobado. Nunca debe recibir credenciales, proyecto o endpoint de producción.
+
+El laboratorio local utilizará estado desechable ignorado por Git. PostgreSQL, emulador Pub/Sub, namespaces y cargas se crearán únicamente dentro del clúster local.
+
+## 5. Definir identificadores antes de crear GCP
+
+Los identificadores reales deben decidirse antes del bootstrap. Ejemplo de archivo personal de preparación —no se confirma en Git—:
+
+```powershell
+$sportAppBillingAccount = "000000-000000-000000"
+$sportAppManagementProject = "sportapp-mgmt-IDENTIFICADOR"
+$sportAppDevelopmentProject = "sportapp-dev-IDENTIFICADOR"
+$sportAppProductionProject = "sportapp-prod-IDENTIFICADOR"
+$sportAppRegion = "us-central1"
+$sportAppStateLocation = "US"
+```
+
+El identificador de proyecto es globalmente único y no se puede cambiar. Antes de usar `us-central1`, confirme requisitos de residencia de datos, latencia y costo.
+
+## 6. Preparar proyectos y facturación
+
+Se requieren, como mínimo:
+
+| Proyecto | Contenido |
+| --- | --- |
+| Gestión | estado Terraform, WIF, identidades de pipeline y automatización financiera |
+| Development | recursos recreables para integración |
+| Production | recursos productivos protegidos |
+
+Creación controlada de ejemplo:
+
+```powershell
+gcloud init
+gcloud auth login
+
+gcloud projects create $sportAppManagementProject --name="SportApp Management"
+gcloud projects create $sportAppDevelopmentProject --name="SportApp Development"
+gcloud projects create $sportAppProductionProject --name="SportApp Production"
+
+gcloud billing projects link $sportAppManagementProject --billing-account=$sportAppBillingAccount
+gcloud billing projects link $sportAppDevelopmentProject --billing-account=$sportAppBillingAccount
+gcloud billing projects link $sportAppProductionProject --billing-account=$sportAppBillingAccount
+```
+
+Estos comandos modifican GCP y pueden habilitar consumo facturable. Ejecútelos únicamente cuando los nombres, permisos, cuenta de facturación y presupuestos hayan sido revisados.
+
+No use una sola identidad con `Owner` o `Editor` para todos los ambientes. El bootstrap, el plan y el apply deben tener responsabilidades separadas y permisos mínimos.
+
+## 7. APIs que deben estar disponibles
+
+### Proyecto de gestión
 
 ```text
-aplicacion_proyecto_final/
-├── backend/        # sport-app-backend: lo usa el ambiente local
-├── frontend/
-├── movil/
-├── documentacion/
-└── platform/       # sport-app-platform: Terraform
+cloudresourcemanager.googleapis.com
+serviceusage.googleapis.com
+iam.googleapis.com
+iamcredentials.googleapis.com
+sts.googleapis.com
+storage.googleapis.com
+cloudbilling.googleapis.com
+billingbudgets.googleapis.com
 ```
 
-## 3. Herramientas de la estación
+### Proyectos de ambiente
 
-| Herramienta | Local | GCP | Instalación | Verificación |
-| --- | --- | --- | --- | --- |
-| Docker Desktop | sí | — | instalador oficial | `docker version` |
-| `kubectl` | sí | opcional | `winget install --id Kubernetes.kubectl -e` | `kubectl version --client` |
-| Terraform ≥ 1.11 | sí | sí | `winget install --id Hashicorp.Terraform -e` | `terraform version` |
-| Google Cloud CLI | — | sí | `winget install --id Google.CloudSDK -e` | `gcloud version` |
-| Git | sí | sí | `winget install --id Git.Git -e` | `git version` |
-| GitHub CLI | — | para CI | `winget install --id GitHub.cli -e` | `gh --version` |
-| Python 3.13 y uv | sí (para construir el backend) | — | README del backend, pasos 2 y 5 | `py -3.13 -m uv --version` |
+```text
+serviceusage.googleapis.com
+compute.googleapis.com
+container.googleapis.com
+run.googleapis.com
+artifactregistry.googleapis.com
+sqladmin.googleapis.com
+servicenetworking.googleapis.com
+pubsub.googleapis.com
+secretmanager.googleapis.com
+logging.googleapis.com
+monitoring.googleapis.com
+iam.googleapis.com
+iamcredentials.googleapis.com
+```
 
-Después de instalar, cierra y vuelve a abrir PowerShell para que se actualice el `PATH`.
-
-## 4. Plataforma local: Kubernetes kubeadm en Docker Desktop
-
-### 4.1 Preparar Docker Desktop
-
-1. Abre Docker Desktop y espera a que indique *Engine running*.
-2. Confirma que usa contenedores Linux con WSL 2: *Settings → General → Use the WSL 2 based engine*.
-3. El ambiente completo usa alrededor de 4 a 6 GB de RAM. Si Docker Desktop muestra límites en *Settings → Resources → Advanced*, asigna al menos 4 CPU y 8 GB.
+Ejemplo para habilitarlas en `development` después de aprobar el alcance:
 
 ```powershell
-docker version --format "Cliente {{.Client.Version}} / Servidor {{.Server.Version}}"
+gcloud services enable `
+  serviceusage.googleapis.com `
+  compute.googleapis.com `
+  container.googleapis.com `
+  run.googleapis.com `
+  artifactregistry.googleapis.com `
+  sqladmin.googleapis.com `
+  servicenetworking.googleapis.com `
+  pubsub.googleapis.com `
+  secretmanager.googleapis.com `
+  logging.googleapis.com `
+  monitoring.googleapis.com `
+  iam.googleapis.com `
+  iamcredentials.googleapis.com `
+  --project=$sportAppDevelopmentProject
 ```
 
-### 4.2 Activar Kubernetes con kubeadm
+Production se prepara de forma independiente; no copie permisos, cuotas o activaciones sin revisión.
 
-La interfaz cambia según la versión de Docker Desktop.
+## 8. Autenticación local sin archivos de credenciales
 
-**Versiones recientes** (hay un ítem **Kubernetes** en el menú lateral):
-
-1. Pulsa **Kubernetes** en el menú lateral.
-2. Pulsa **Create cluster** (o activa *Enable Kubernetes*).
-3. En el método de aprovisionamiento, elige **kubeadm**.
-4. Confirma con **Create** o **Apply**.
-
-**Versiones anteriores:**
-
-1. *Settings → Kubernetes*.
-2. Marca **Enable Kubernetes**.
-3. Si pregunta el método de aprovisionamiento, elige **kubeadm**.
-4. Pulsa **Apply & restart**.
-
-La primera vez se descargan las imágenes del clúster, lo que tarda entre 2 y 10 minutos. Termina cuando Kubernetes aparece como **running** en verde.
-
-**Por qué kubeadm y no kind:** con kubeadm el clúster usa el motor Docker del equipo como runtime. Las imágenes que construyes con `docker build` quedan disponibles en Kubernetes sin registro ni carga manual. Con kind habría que cargar cada imagen en los nodos.
-
-### 4.3 Verificar que el clúster es kubeadm
-
-Usa siempre `--context docker-desktop`. El contexto activo de `kubectl` puede ser un clúster GKE de otro proyecto.
-
-```powershell
-kubectl config get-contexts                               # debe existir docker-desktop
-kubectl --context docker-desktop get nodes -o wide        # nodo docker-desktop en Ready, runtime docker://
-kubectl --context docker-desktop -n kube-system get pods  # etcd-, kube-apiserver-, kube-scheduler-docker-desktop
-kubectl --context docker-desktop -n kube-system get configmap kubeadm-config
-```
-
-Resultado esperado:
-
-| Comprobación | Valor esperado |
-| --- | --- |
-| Nodo | `docker-desktop`, `Ready`, rol `control-plane` |
-| Runtime | `docker://…` (comparte imágenes con Docker) |
-| Plano de control | pods estáticos `etcd-docker-desktop`, `kube-apiserver-docker-desktop`, etc. |
-| `kubeadm-config` | existe en `kube-system` |
-| `StorageClass` | `hostpath (default)` |
-
-No hace falta cambiar el contexto activo: la raíz Terraform local fija `docker-desktop` y rechaza cualquier otro.
-
-### 4.4 Preparar el backend y sus imágenes
-
-El ambiente local despliega los manifiestos `deploy/k8s/base` del clon del backend y sus imágenes `sportapp/<componente>:<tag>`.
-
-```powershell
-cd ..\backend
-py -3.13 -m uv run python scripts/task.py build all     # 8 imágenes con tag "local"
-docker images "sportapp/*"
-```
-
-El frontend todavía no tiene imagen: en desarrollo se ejecuta con `npm start` (ver la guía de Terraform, sección 5.3).
-
-### 4.5 Archivo de variables local
-
-Es opcional y **no contiene credenciales**. Solo hace falta si el backend no es carpeta hermana o si usas otro tag de imagen.
-
-```powershell
-cd ..\platform\infra\terraform\environments\local
-Copy-Item local.auto.tfvars.example local.auto.tfvars    # ignorado por Git
-notepad local.auto.tfvars
-```
-
-| Variable | Para qué | Valor por defecto |
-| --- | --- | --- |
-| `backend_path` | ruta del repositorio backend relativa a esta carpeta | `../../../../../backend` |
-| `backend_image_tag` | tag de las imágenes construidas | `local` |
-| `backend_image_tags` | tag por componente reconstruido | `{}` |
-| `deploy_backend` | `false` deja solo PostgreSQL y Pub/Sub | `true` |
-| `log_level` | nivel de log | `INFO` |
-
-Las contraseñas de PostgreSQL las genera Terraform en el Secret `sportapp-database` y no se guardan en el estado.
-
-### 4.6 Primer apply
-
-```powershell
-terraform init
-terraform plan -out=tfplan
-terraform apply tfplan
-kubectl --context docker-desktop --namespace sportapp-local get pods
-curl.exe http://localhost:18080/health/ready
-```
-
-La plataforma local queda lista cuando todos los pods están en `Running`, los Jobs en `Complete` y el BFF responde `200`. El uso diario continúa en la guía de Terraform (sección 4).
-
-## 5. Plataforma GCP: producción
-
-Esta preparación se hace **una sola vez** y modifica recursos facturables. Ejecútala solo después de revisar nombres, permisos y presupuesto.
-
-### 5.1 Decidir los identificadores
-
-Los ID de proyecto son únicos a nivel global y no se pueden cambiar. Define los valores en tu sesión de PowerShell:
-
-```powershell
-$billing    = "XXXXXX-XXXXXX-XXXXXX"     # gcloud billing accounts list
-$mgmt       = "sportapp-mgmt-1234"       # estado e identidades; nunca se destruye
-$production = "sportapp-prod-1234"       # cargas de producción
-```
-
-La región adoptada es `us-central1`. Antes de usarla, confirma los requisitos de residencia de datos, latencia y costo.
-
-### 5.2 Crear los proyectos y vincular la facturación
-
-```powershell
-gcloud auth login
-gcloud projects create $mgmt --name="SportApp gestion"
-gcloud projects create $production --name="SportApp produccion"
-gcloud billing projects link $mgmt --billing-account=$billing
-gcloud billing projects link $production --billing-account=$billing
-```
-
-Quien ejecute el bootstrap necesita `roles/owner` en ambos proyectos y `roles/billing.costsManager` en la cuenta de facturación, para crear el presupuesto.
-
-No hace falta habilitar APIs a mano. El bootstrap habilita las del proyecto de gestión (IAM, STS, Storage y presupuestos) y las mínimas del de producción. La raíz de producción habilita el resto: Compute, GKE, Cloud Run, Cloud SQL, Pub/Sub, Secret Manager, Artifact Registry, Logging y Monitoring.
-
-### 5.3 Autenticarse sin llaves
-
-Terraform usa **Application Default Credentials (ADC)**, es decir, tu propia sesión de Google:
+Terraform usa Application Default Credentials. Para una primera validación autorizada en `development`:
 
 ```powershell
 gcloud auth application-default login
+gcloud auth application-default set-quota-project $sportAppDevelopmentProject
+gcloud config set project $sportAppDevelopmentProject
+gcloud projects describe $sportAppDevelopmentProject
 ```
 
-Este comando crea `%APPDATA%\gcloud\application_default_credentials.json`, que queda fuera del repositorio. **Nunca** lo copies al proyecto, nunca descargues llaves JSON de cuentas de servicio y nunca agregues `credentials = file(...)` al proveedor.
-
-A partir del bootstrap, Terraform no actúa con tus permisos personales: impersona la cuenta `tf-apply-production`, que el bootstrap autoriza solo a los operadores declarados.
-
-### 5.4 Completar bootstrap.auto.tfvars
+La opción preferida, una vez creada la identidad de Terraform, es suplantar una cuenta de servicio por ambiente:
 
 ```powershell
-cd infra\terraform\bootstrap\gcp-state
-Copy-Item bootstrap.auto.tfvars.example bootstrap.auto.tfvars   # ignorado por Git
-notepad bootstrap.auto.tfvars
+$sportAppTerraformDevServiceAccount = "terraform-dev@$sportAppDevelopmentProject.iam.gserviceaccount.com"
+
+gcloud auth application-default login `
+  --impersonate-service-account=$sportAppTerraformDevServiceAccount
 ```
 
-| Campo | Qué poner |
-| --- | --- |
-| `management_project_id` | `$mgmt` |
-| `region` | `us-central1` |
-| `github_repository` | `lfnavarroj1/sport-app-platform` |
-| `environments.production.project_id` | `$production` |
-| `environments.production.operators` | `["user:<tu-correo>"]`: quienes pueden ejecutar Terraform en producción |
-| `environments.production.budget_amount` | presupuesto mensual; la estimación de costos fija `1000` (USD) como tope inicial |
-| `environments.production.component_delivery` | `true`: backend y frontend publican imágenes de release |
-| `billing_account` | `$billing` |
-| `budget_currency` | moneda de la cuenta de facturación (`USD`, `COP`, …) |
+La persona necesita permiso para generar tokens sobre esa cuenta, y la cuenta técnica recibe únicamente los roles requeridos por los módulos reales.
 
-### 5.5 Ejecutar el bootstrap
+No crear ni descargar una llave JSON como camino normal. No agregar al proveedor:
 
-```powershell
-terraform init
-terraform plan -out=tfplan
-terraform apply tfplan
-terraform output
+```hcl
+# Prohibido para el flujo ordinario
+credentials = file("service-account-key.json")
 ```
 
-| Salida | Dónde se usa |
+## 9. Identidades por responsabilidad
+
+| Identidad | Alcance |
 | --- | --- |
-| `state_buckets.production` | `bucket` en `backend.hcl` |
-| `apply_service_accounts.production` | `impersonate_service_account` en `gcp.auto.tfvars` y `backend.hcl` |
-| `plan_service_accounts.production` | variable `PROD_TF_PLAN_SA` de GitHub |
-| `delivery_service_accounts.production` | `artifact_registry_writers` y variable `GCP_DELIVERY_SERVICE_ACCOUNT` de backend/frontend |
-| `workload_identity_provider` | variable `GCP_WORKLOAD_IDENTITY_PROVIDER` de los workflows |
+| `terraform-bootstrap` | crear estado, WIF e identidades iniciales; uso excepcional |
+| `terraform-plan-dev` | leer development y generar planes |
+| `terraform-apply-dev` | modificar únicamente development |
+| `terraform-plan-prod` | leer producción y generar planes |
+| `terraform-apply-prod` | aplicar un plan aprobado en producción |
 
-El estado del bootstrap queda en `terraform.tfstate`, en esa carpeta e ignorado por Git. Respáldalo o mígralo al bucket siguiendo el comentario de `versions.tf`.
+Los nombres son orientativos. Los roles exactos se obtienen del inventario de recursos; no se concede `Owner`, `Editor` o permisos de producción a una estación personal.
 
-### 5.6 Completar gcp.auto.tfvars y backend.hcl
+## 10. Estado remoto y bootstrap
 
-Estos son los archivos donde se indican la cuenta y el proyecto de producción. No contienen secretos.
+El backend GCS requiere que el bucket exista antes de ejecutar `terraform init` sobre un ambiente. La raíz `bootstrap/gcp-state` se ejecutará una vez con estado local controlado para crear:
 
-```powershell
-cd ..\..\environments\production
-Copy-Item gcp.auto.tfvars.example gcp.auto.tfvars     # ignorado por Git
-Copy-Item backend.hcl.example backend.hcl             # ignorado por Git
-notepad gcp.auto.tfvars
-notepad backend.hcl
+- bucket o separación aprobada por ambiente;
+- acceso uniforme por IAM y prevención de acceso público;
+- versionado de objetos;
+- política de retención y recuperación acordada;
+- permisos separados para plan y apply;
+- presupuesto y alertas del proyecto de gestión.
+
+Después se migra el estado del propio bootstrap a un backend protegido. No se elimina el proyecto de gestión al destruir `development`.
+
+Ejemplos versionables de configuración del backend:
+
+```hcl
+# backend-development.hcl.example
+bucket = "REEMPLAZAR-STATE-BUCKET-DEVELOPMENT"
+prefix = "terraform/development/platform"
 ```
 
-**`gcp.auto.tfvars`**
+```hcl
+# backend-production.hcl.example
+bucket = "REEMPLAZAR-STATE-BUCKET-PRODUCTION"
+prefix = "terraform/production/platform"
+```
 
-| Campo | Qué poner |
-| --- | --- |
-| `project_id` | `$production` |
-| `impersonate_service_account` | salida `apply_service_accounts.production` |
-| `alert_emails` | correos que reciben las alertas |
-| `gke_authorized_networks` | opcional: tu IP pública `/32` para `kubectl` por IP |
-| `artifact_registry_writers` | `{ component-ci = "serviceAccount:<delivery_service_accounts.production>" }` |
-| `labels` | por ejemplo `{ owner = "equipo-sportapp" }` |
+Los archivos reales `backend-*.hcl` se ignoran si contienen identificadores que el equipo clasifique como sensibles. Nunca contienen credenciales.
 
-**`backend.hcl`**
-
-| Campo | Qué poner |
-| --- | --- |
-| `bucket` | salida `state_buckets.production` |
-| `impersonate_service_account` | la misma cuenta `tf-apply-production` (solo en tu equipo; en CI se omite) |
-
-Los tamaños, la red y los digests de imágenes **no** van aquí: están en `terraform.tfvars`, que se versiona y se revisa en PR.
-
-### 5.7 Verificar el acceso
+Inicialización posterior al bootstrap:
 
 ```powershell
-gcloud auth print-access-token --impersonate-service-account=tf-apply-production@$mgmt.iam.gserviceaccount.com
-terraform init -backend-config=backend.hcl
+terraform init -backend-config=backend-development.hcl -reconfigure
+```
+
+GCS proporciona bloqueo del estado. No use `-lock=false` ni `force-unlock` como operación ordinaria.
+
+## 11. Variables permitidas
+
+Cada raíz tendrá `terraform.tfvars.example` versionado con marcadores:
+
+```hcl
+project_id  = "REEMPLAZAR-PROYECTO"
+region      = "us-central1"
+environment = "development"
+
+github_owner      = "lfnavarroj1"
+github_repository = "sport-app-platform"
+
+labels = {
+  application = "sport-app"
+  environment = "development"
+  managed_by  = "terraform"
+  owner       = "REEMPLAZAR-RESPONSABLE"
+}
+```
+
+El archivo real puede llamarse `development.auto.tfvars` y debe permanecer ignorado. Solo contiene configuración no secreta.
+
+No se permiten en `.tfvars`:
+
+- contraseñas de bases de datos;
+- tokens de GitHub;
+- llaves privadas o JSON de cuentas de servicio;
+- secretos OAuth de Strava;
+- claves API;
+- contenido de certificados;
+- datos personales;
+- valores de versiones de Secret Manager.
+
+Terraform crea el contenedor, metadatos e IAM del secreto. La carga y rotación del valor se realiza mediante un canal operativo independiente porque cualquier valor suministrado a Terraform puede terminar en el plan o el estado.
+
+## 12. Archivos ignorados y versionados
+
+La raíz de `sport-app-platform` debe ignorar:
+
+```gitignore
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+*.auto.tfvars
+*.auto.tfvars.json
+backend-*.hcl
+*.pem
+*.key
+*service-account*.json
+```
+
+Sí se versionan:
+
+```text
+*.tf
+.terraform.lock.hcl
+*.tfvars.example
+backend-*.hcl.example
+README.md
+tests/*.tftest.hcl
+```
+
+Antes de cualquier commit:
+
+```powershell
+git status --short
+git diff --cached
+git diff --cached --submodule=log
+```
+
+## 13. Preparar GitHub Actions con WIF
+
+GitHub Actions debe autenticarse mediante OIDC y Workload Identity Federation. No almacene una llave de cuenta de servicio en `Secrets`.
+
+Preparación conceptual:
+
+1. crear un Workload Identity Pool en el proyecto de gestión;
+2. crear un proveedor OIDC para GitHub;
+3. restringir atributos a `lfnavarroj1/sport-app-platform` y a las ramas/ambientes autorizados;
+4. permitir suplantar una cuenta de plan o apply específica;
+5. guardar el nombre del proveedor WIF y correo de la cuenta como variables de GitHub;
+6. conceder al job `contents: read` e `id-token: write`;
+7. usar GitHub Environments diferentes para `development` y `production`;
+8. exigir aprobación para production.
+
+Production no usa la misma cuenta de servicio ni el mismo environment de GitHub que development.
+
+## 14. Presupuestos y control de costos
+
+Antes del primer `apply` real:
+
+- cree un presupuesto por proyecto;
+- configure umbrales tempranos y destinatarios;
+- use un límite de gasto cuando el servicio y la cuenta lo admitan;
+- defina máximos conservadores de instancias y réplicas;
+- configure `min-instances = 0` para Cloud Run no productivo;
+- asigne propietario y fecha de caducidad a development;
+- documente `suspend` y `destroy`;
+- confirme que las alertas normales de presupuesto no detienen automáticamente el gasto.
+
+Consulte la sección de [encendido, apagado y control de costos](arquitectura-terraform.md#encendido-apagado-y-control-de-costos).
+
+## 15. Validación sin aplicar infraestructura
+
+Cuando exista el código Terraform:
+
+```powershell
+terraform fmt -check -recursive
+terraform init -backend=false
 terraform validate
-terraform plan -out=tfplan
+terraform test
 ```
 
-- **El token se imprime:** la impersonación funciona.
-- **Responde 403:** tu usuario no está en `operators`.
-- **`plan` termina sin errores:** la plataforma GCP está lista. El `apply` y su revisión se describen en la guía de Terraform (sección 6.6).
-
-### 5.8 Preparar GitHub Actions
-
-GitHub Actions usa WIF: credenciales temporales por OIDC, nunca llaves en *Secrets*.
-
-1. En `sport-app-platform`, crea el Environment `production` con *required reviewers*.
-2. Crea las variables del repositorio `GCP_WORKLOAD_IDENTITY_PROVIDER`, `PROD_PROJECT_ID`, `PROD_STATE_BUCKET`, `PROD_TF_PLAN_SA`, `PROD_TF_APPLY_SA`, `PROD_ALERT_EMAILS` y `PROD_ARTIFACT_REGISTRY_WRITERS`.
-3. En backend y frontend, crea el Environment `production` con `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DELIVERY_SERVICE_ACCOUNT`, `GCP_ARTIFACT_REGISTRY` y `GCP_ARTIFACT_REGISTRY_HOST`.
+Para verificar acceso a development después del bootstrap:
 
 ```powershell
-gh variable set PROD_TF_APPLY_SA --repo lfnavarroj1/sport-app-platform --body "tf-apply-production@$mgmt.iam.gserviceaccount.com"
+terraform init -backend-config=backend-development.hcl -reconfigure
+terraform plan -var-file=development.auto.tfvars -out=development.tfplan
+terraform show development.tfplan
 ```
 
-## 6. Qué archivos van a Git
+El plan puede contener información sensible: no se confirma en Git ni se adjunta a un canal público. Ningún comando de esta sección aplica cambios.
 
-| Archivo | Plataforma | ¿Git? | Contenido |
-| --- | --- | --- | --- |
-| `*.tf`, `.terraform.lock.hcl`, `tests/*.tftest.hcl` | ambas | sí | código y versiones fijadas |
-| `environments/production/terraform.tfvars` | GCP | sí | tamaños, red y digests; sin secretos |
-| `*.example` | ambas | sí | plantillas con marcadores |
-| `environments/local/local.auto.tfvars` | local | no | ruta del backend y tags |
-| `bootstrap/gcp-state/bootstrap.auto.tfvars` | GCP | no | proyectos, operadores y facturación |
-| `environments/production/gcp.auto.tfvars` | GCP | no | proyecto, cuenta a impersonar y correos |
-| `environments/production/backend.hcl` | GCP | no | bucket del estado |
-| `terraform.tfstate*`, `tfplan*`, `.terraform/` | ambas | no | estado, planes y proveedores |
-| `application_default_credentials.json` | GCP | **nunca**; vive en `%APPDATA%\gcloud` | tu sesión |
-| llaves JSON de cuentas de servicio | — | **nunca**; no se crean | — |
+## 16. Condiciones adicionales para producción
 
-El `.gitignore` de la plataforma ya cubre todos los casos. Antes de un commit, revisa `git status --short` y `git diff --cached`.
+Production se considera preparado solamente cuando:
 
-## 7. Lista de verificación
+- development fue creado, probado y destruido de forma reproducible;
+- existen pruebas de restauración de estado y datos;
+- WIF, GitHub Environment y aprobación están activos;
+- el plan se genera para el commit que se aprobará;
+- no hay credenciales personales en el proceso;
+- imágenes y paquetes se referencian por digest/checksum;
+- backups, RPO/RTO, red, DNS, certificados y observabilidad están aprobados;
+- los recursos persistentes tienen protección contra destrucción accidental;
+- el rollback y las migraciones fueron ensayados en staging o equivalente.
+
+Un equipo personal puede generar validaciones estáticas o planes limitados, pero el `apply` de producción pertenece al pipeline protegido.
+
+## 17. Lista de preparación
 
 ### Local
 
-- [ ] Docker Desktop usa WSL 2 y contenedores Linux.
-- [ ] Kubernetes está en verde y fue creado con **kubeadm**.
-- [ ] `kubectl --context docker-desktop get nodes` muestra `Ready` y runtime `docker://`.
-- [ ] Las 8 imágenes `sportapp/*` existen en `docker images`.
-- [ ] `terraform apply` en `environments/local` deja todos los pods en `Running`.
-- [ ] `http://localhost:18080/health/ready` responde `200`.
+- [ ] El clon no inicializó los submódulos.
+- [ ] Terraform y herramientas responden desde PowerShell.
+- [ ] Docker Desktop usa contenedores Linux.
+- [ ] Kubernetes local está operativo.
+- [ ] El contexto de `kubectl` es el local aprobado.
+- [ ] Estado, planes y variables reales están ignorados.
 
-### GCP
+### GCP común
 
-- [ ] Existen los proyectos de gestión y producción, con facturación vinculada.
-- [ ] `gcloud auth application-default login` está hecho; no existen llaves JSON.
-- [ ] El bootstrap se aplicó y su estado está respaldado.
-- [ ] El presupuesto de producción existe.
-- [ ] `gcp.auto.tfvars` y `backend.hcl` están completos y fuera de Git.
-- [ ] La impersonación de `tf-apply-production` devuelve un token.
-- [ ] `terraform plan` de producción termina sin errores.
-- [ ] Para CI: el Environment `production` exige revisores y las variables están creadas.
+- [ ] Los IDs y la región fueron aprobados.
+- [ ] La cuenta de facturación está identificada.
+- [ ] Existen proyectos separados de gestión, development y production.
+- [ ] Hay presupuestos y alertas antes del primer apply.
+- [ ] Las APIs necesarias están habilitadas por proyecto.
+- [ ] El backend GCS existe, está versionado y bloquea el estado.
+- [ ] No existen llaves JSON en el repositorio o GitHub Secrets.
 
-## 8. Problemas frecuentes
+### Development
 
-| Síntoma | Causa | Solución |
-| --- | --- | --- |
-| No existe el contexto `docker-desktop` | Kubernetes no está activado | [4.2](#42-activar-kubernetes-con-kubeadm) |
-| Pods en `ErrImagePull` con imágenes `sportapp/*` | el clúster es kind o falta la imagen | recrea el clúster con kubeadm o ejecuta [4.4](#44-preparar-el-backend-y-sus-imágenes) |
-| *Kubernetes failed to start* | estado corrupto del clúster | *Settings → Kubernetes → Reset Kubernetes cluster* |
-| `El ambiente local solo se aplica en el contexto docker-desktop` | se pasó otro contexto | no cambies `kube_context` |
-| `gcloud projects create` falla por el ID | el ID ya existe en GCP | elige otro sufijo |
-| 403 al impersonar | tu usuario no está en `operators` | agrégalo en `bootstrap.auto.tfvars` y aplica el bootstrap |
-| `Error: Failed to get existing workspaces` en `init` | el bucket de `backend.hcl` es incorrecto | copia `state_buckets.production` |
+- [ ] ADC funciona con cuenta autorizada o suplantación.
+- [ ] Las identidades de plan y apply tienen permisos mínimos.
+- [ ] `terraform init`, `validate`, `test` y `plan` terminan correctamente.
+- [ ] `destroy` y la comprobación de costos residuales están preparados.
+
+### Production
+
+- [ ] WIF y GitHub Environment están protegidos.
+- [ ] La cuenta de producción es distinta de development.
+- [ ] El apply requiere aprobación explícita.
+- [ ] Backups, restauración, rollback y observabilidad tienen evidencia.
+- [ ] No existe destrucción automática de producción.
 
 ## Referencias oficiales
 
-- [Docker Desktop: Kubernetes](https://docs.docker.com/desktop/use-desktop/kubernetes/)
 - [HashiCorp: instalar Terraform](https://developer.hashicorp.com/terraform/install)
 - [Google Cloud: autenticación para Terraform](https://docs.cloud.google.com/docs/terraform/authentication)
+- [Google Cloud: habilitar APIs y servicios](https://docs.cloud.google.com/service-usage/docs/enable-disable)
 - [HashiCorp: backend GCS](https://developer.hashicorp.com/terraform/language/backend/gcs)
 - [Google Cloud: WIF para pipelines](https://docs.cloud.google.com/iam/docs/best-practices-for-using-service-accounts-in-deployment-pipelines)
+- [Docker Desktop: Kubernetes local](https://docs.docker.com/desktop/use-desktop/kubernetes/)
 - [Google Cloud: presupuestos y alertas](https://docs.cloud.google.com/billing/docs/how-to/budgets)

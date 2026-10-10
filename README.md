@@ -57,6 +57,7 @@ Un push de plataforma se realiza con `git push --no-recurse-submodules origin <r
 - La [preparación de Terraform](docs/preparacion-terraform-local-gcp.md) deja lista cada plataforma: el Kubernetes kubeadm de Docker Desktop para desarrollo, y los proyectos, la autenticación sin llaves y los archivos de variables de GCP para producción.
 - La [guía de Terraform](infra/terraform/README.md) explica paso a paso el desarrollo local, la producción en GCP y la actualización de backend y frontend.
 - La [arquitectura Terraform](docs/arquitectura-terraform.md) define su ubicación, clonación, frontera con los componentes, pruebas en local/GCP y ciclo de encendido, suspensión y destrucción para controlar costos.
+- La [preparación de Terraform](docs/preparacion-terraform-local-gcp.md) reúne los prerrequisitos locales, proyectos y APIs GCP, autenticación, estado, variables, WIF y comprobaciones previas al primer plan.
 - La arquitectura detallada se publicará gradualmente en la wiki sin copiar las guías internas destinadas a agentes.
 
 ### Fuentes canónicas de documentación
