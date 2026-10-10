@@ -55,6 +55,7 @@ Un push de plataforma se realiza con `git push --no-recurse-submodules origin <r
 - El [manual de versiones](docs/manual-versionado.md) define la relación entre sprint, HU, ramas, versiones y releases.
 - El [esquema de CI y release](docs/esquema-ci-y-release.md) explica qué ocurre con cada push y cómo se libera una composición compatible.
 - La [arquitectura Terraform](docs/arquitectura-terraform.md) define su ubicación, clonación, frontera con los componentes, pruebas en local/GCP y ciclo de encendido, suspensión y destrucción para controlar costos.
+- La [preparación de Terraform](docs/preparacion-terraform-local-gcp.md) reúne los prerrequisitos locales, proyectos y APIs GCP, autenticación, estado, variables, WIF y comprobaciones previas al primer plan.
 - La arquitectura detallada se publicará gradualmente en la wiki sin copiar las guías internas destinadas a agentes.
 
 ## Infraestructura

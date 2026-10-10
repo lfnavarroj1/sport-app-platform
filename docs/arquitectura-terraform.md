@@ -207,6 +207,8 @@ La deshabilitación de facturación se reserva para una emergencia: Google detie
 
 La decisión y la arquitectura están aprobadas. La creación de los módulos, raíces, bootstrap y workflows todavía está pendiente; por tanto, los diagramas describen el destino verificable y no un despliegue GCP ya operativo.
 
+Antes de implementar, complete la [Preparación local y de GCP para Terraform](preparacion-terraform-local-gcp.md). Esa guía evita iniciar con proyectos, credenciales, estado o presupuestos incompletos.
+
 ## Referencias
 
 - [Google Cloud: prácticas recomendadas para módulos raíz](https://docs.cloud.google.com/docs/terraform/best-practices/root-modules)
