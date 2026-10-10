@@ -17,7 +17,7 @@ mock_provider "google" {
 variables {
   project_id          = "sportapp-test"
   region              = "us-central1"
-  environment         = "development"
+  environment         = "staging"
   deletion_protection = false
 
   network = {

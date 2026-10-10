@@ -33,6 +33,8 @@ Una HU no se duplica en los tres repositorios. El issue central representa el va
 | Fin del sprint | Fecha | cierre de la ventana temporal asignada |
 | PHU | Número | estimación estable de la HU |
 | Valor | Número | prioridad/valor de negocio |
+| Tipo de elemento | Selección | Historia de usuario, pull request o actividad técnica; evita mezclar métricas funcionales y técnicas |
+| Avance verificable (%) | Número | indicador de flujo: Backlog 0, Preparada 10, En curso 50, En revisión 80, Aceptada 100 |
 | Ciclo | Selección | Reimplementación 2026; otros ciclos se agregarán solo cuando existan |
 | Repositorios afectados | Selección múltiple o etiquetas | backend, frontend, móvil, plataforma |
 | Versión objetivo | Texto/selección | tag de plataforma esperado |
@@ -50,6 +52,7 @@ Una HU no se duplica en los tres repositorios. El issue central representa el va
 - Trabajo por repositorio afectado.
 - Release actual con HU aceptadas y evidencia.
 - Referencias históricas fuera del tablero operativo vigente.
+- Avance verificable por tipo de elemento, sin convertir trabajo parcial en PHU o valor entregado.
 
 | Registro | Contenido | Frecuencia |
 | --- | --- | --- |
@@ -66,5 +69,7 @@ Una HU no se duplica en los tres repositorios. El issue central representa el va
 - No borre cambios de alcance; registre el valor anterior, el nuevo y el motivo.
 - No cambie PHU durante el sprint.
 - No marque una HU como aceptada sin cumplir la definición de terminado.
+- Los PR y actividades técnicas pueden mostrar avance, pero no reciben PHU ni puntos de valor; esas métricas pertenecen exclusivamente a la HU aceptada.
+- Todas las HU deben tener responsable. Un cambio de responsable se registra en el issue, no solo en una vista.
 - Cada HU aceptada debe indicar la versión de plataforma donde fue entregada.
 - Cada sprint aceptado debe corresponder con una release según el [manual de versiones](../documentacion/docs/manual-versionado.md).

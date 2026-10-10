@@ -54,17 +54,30 @@ Un push de plataforma se realiza con `git push --no-recurse-submodules origin <r
 - El [GitHub Project SportApp Platform](https://github.com/users/lfnavarroj1/projects/4) administra el backlog vigente, los sprints, estados, responsables y evidencia.
 - El [manual de versiones](docs/manual-versionado.md) define la relación entre sprint, HU, ramas, versiones y releases.
 - El [esquema de CI y release](docs/esquema-ci-y-release.md) explica qué ocurre con cada push y cómo se libera una composición compatible.
+- La [preparación de Terraform](docs/preparacion-terraform-local-gcp.md) deja lista cada plataforma: el Kubernetes kubeadm de Docker Desktop para desarrollo, y los proyectos, la autenticación sin llaves y los archivos de variables de GCP para producción.
+- La [guía de Terraform](infra/terraform/README.md) explica paso a paso el desarrollo local, la producción en GCP y la actualización de backend y frontend.
 - La [arquitectura Terraform](docs/arquitectura-terraform.md) define su ubicación, clonación, frontera con los componentes, pruebas en local/GCP y ciclo de encendido, suspensión y destrucción para controlar costos.
 - La arquitectura detallada se publicará gradualmente en la wiki sin copiar las guías internas destinadas a agentes.
 
+### Fuentes canónicas de documentación
+
+| Contenido | Fuente que se edita |
+| --- | --- |
+| Portada y manuales operativos | `README.md` y `docs/` de este repositorio |
+| Datos de respaldo del tablero | `project/` de este repositorio; el estado diario vive en GitHub Projects |
+| Presentación, arquitectura resumida y entregas | GitHub Wiki; su fuente local se conserva únicamente en el repositorio documental bajo `presentacion-proyecto/wiki/` |
+| Arquitectura detallada y guías para agentes | repositorio documental, bajo `arquitectura/` |
+
+No se mantienen copias de `README.md`, `docs/` ni `project/` dentro de `documentacion/presentacion-proyecto`. Un cambio se realiza directamente en la fuente indicada y después se enlaza desde los demás destinos.
+
 ## Infraestructura
 
-Terraform, la composición por ambiente y la promoción coordinada pertenecen a `sport-app-platform` porque afectan conjuntamente backend, frontend y servicios compartidos. Cada componente conserva sus `Dockerfile`, pruebas, migraciones y configuración interna. Las raíces de [desarrollo y producción en GCP](infra/terraform/README.md) están implementadas y verificadas sin credenciales, pero todavía no se han aplicado. Siguen pendientes `staging`, `local` y los workflows.
+Terraform, la composición por ambiente y la promoción coordinada pertenecen a `sport-app-platform` porque afectan conjuntamente backend, frontend y servicios compartidos. Cada componente conserva sus `Dockerfile`, pruebas, migraciones y configuración interna. El [ambiente de desarrollo corre en local](infra/terraform/README.md#4-desarrollo-local-paso-a-paso), en el Kubernetes kubeadm de Docker Desktop, y [producción en GCP](infra/terraform/README.md#6-producción-en-gcp-paso-a-paso). Antes del primer `apply`, cada plataforma se prepara con la [guía de preparación](docs/preparacion-terraform-local-gcp.md). La guía de Terraform explica cómo crear cada ambiente y cómo se actualizan backend y frontend. Producción todavía no se ha aplicado; siguen pendientes `staging` y los workflows.
 
-Los ambientes no productivos serán recreables: `suspend` reducirá cómputo con posibles costos residuales y `destroy` eliminará los recursos después de revisar un plan. Deshabilitar la facturación se reserva para emergencias; la [arquitectura Terraform](docs/arquitectura-terraform.md) contiene el procedimiento y los controles de presupuesto.
+Desarrollo es desechable y no genera costos de nube: `terraform destroy` lo elimina del clúster local y `terraform apply` lo reconstruye. Producción no se suspende ni se destruye desde Terraform. Deshabilitar la facturación se reserva para emergencias; la [arquitectura Terraform](docs/arquitectura-terraform.md) contiene los controles de presupuesto.
 
 ## Estado
 
-El repositorio público [`sport-app-platform`](https://github.com/lfnavarroj1/sport-app-platform) fue creado el 2026-10-09. Esta carpeta continúa siendo la fuente local de su portada y manuales.
+El repositorio público [`sport-app-platform`](https://github.com/lfnavarroj1/sport-app-platform) fue creado el 2026-10-09. Este repositorio es la fuente canónica de su portada, manuales y registros de apoyo al Project.
 
 Backend, frontend y móvil se publicaron después de revisar sus archivos e historial para descartar secretos y material no publicable. Los submódulos de la plataforma pueden clonarse sin autorización adicional y continúan fijados a commits concretos.

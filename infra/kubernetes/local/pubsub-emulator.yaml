@@ -1,0 +1,47 @@
+# Emulador oficial de Pub/Sub. No reproduce IAM ni cuotas de GCP.
+apiVersion: v1
+kind: Service
+metadata:
+  name: pubsub-emulator
+  labels:
+    app.kubernetes.io/name: pubsub-emulator
+spec:
+  selector:
+    app.kubernetes.io/name: pubsub-emulator
+  ports:
+    - {name: grpc, port: 8085, targetPort: grpc}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pubsub-emulator
+  labels:
+    app.kubernetes.io/name: pubsub-emulator
+    app.kubernetes.io/component: messaging
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pubsub-emulator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pubsub-emulator
+        app.kubernetes.io/component: messaging
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: emulator
+          image: gcr.io/google.com/cloudsdktool/google-cloud-cli:588.0.0-emulators@sha256:be2f0e582a94c9e06e7a384fe2b3b39d590eeb8da65a110eda991598c100fe80
+          command: [gcloud, beta, emulators, pubsub, start, --host-port=0.0.0.0:8085]
+          ports:
+            - {name: grpc, containerPort: 8085}
+          readinessProbe:
+            tcpSocket: {port: grpc}
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: "1", memory: 768Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}

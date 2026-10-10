@@ -50,12 +50,6 @@ variable "deletion_protection" {
   type        = bool
 }
 
-variable "suspended" {
-  description = "Modo suspend: detiene Cloud SQL y lleva Cloud Run a mínimo 0 (no se permite en producción)."
-  type        = bool
-  default     = false
-}
-
 variable "network" {
   description = "Rangos de red del ambiente."
   type = object({

@@ -16,7 +16,9 @@ La relación detallada de HU por sprint está en [Planeación y sprints](../wiki
 
 ## Carga inicial del Project 4
 
-Las 40 HU se crearon nuevamente en `sport-app-platform`. HU001 inicia `En curso`; las otras 39 están en `Backlog`. La asignación por sprint se conserva como referencia inicial y debe ratificarse durante la planeación vigente.
+Las 40 HU se crearon nuevamente en `sport-app-platform` y tienen a `lfnavarroj1` como responsable. HU001 está `En curso` con avance verificable del 50 %; las otras 39 están en `Backlog`. El Project también incluye los PR #1 de backend y #41 de plataforma como evidencia técnica, sin asignarles PHU ni valor.
+
+HU001 se trasladó de Sprint 2 a Sprint 1 porque comenzó el 9 de octubre. HU003 se adelantó de Sprint 3 a Sprint 1 el 10 de octubre porque la autenticación web y móvil habilita los recorridos protegidos de las demás historias. El Sprint 1 pasó de una línea base de 20 a 27 PHU; Sprint 2 quedó en 20 PHU y Sprint 3 en 34 PHU. El backlog conserva 100 PHU.
 
 ## Cronograma vigente
 
@@ -46,9 +48,15 @@ Esta tabla pertenece al ciclo actual. Se completa exclusivamente con aceptación
 
 | Sprint | Objetivo | Inicio | Fin | Capacidad PHU | PHU comprometidos | PHU aceptados | HU aceptadas | Valor entregado | Predictibilidad | Evidencia |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| Sprint 1 | Pendiente de formular | 2026-10-05 | 2026-10-18 | 28 | 20 | `N/D` | `N/D` | `N/D` | `N/D` | — |
-| Sprint 2 | Pendiente de formular | 2026-10-19 | 2026-11-01 | 28 | 25 | `N/D` | `N/D` | `N/D` | `N/D` | — |
-| Sprint 3 | Pendiente de formular | 2026-11-02 | 2026-11-22 | 42 | 36 | `N/D` | `N/D` | `N/D` | `N/D` | — |
+| Sprint 1 | Incrementar la base técnica y avanzar HU001 y HU003 | 2026-10-05 | 2026-10-18 | 28 | 27 | 0 al corte | 0 al corte | 0 al corte | Cierre pendiente | [Project 4](https://github.com/users/lfnavarroj1/projects/4) |
+| Sprint 2 | Pendiente de ratificar | 2026-10-19 | 2026-11-01 | 28 | 20 | `N/D` | `N/D` | `N/D` | `N/D` | — |
+| Sprint 3 | Pendiente de formular | 2026-11-02 | 2026-11-22 | 42 | 34 | `N/D` | `N/D` | `N/D` | `N/D` | — |
+
+### Corte operativo del 10 de octubre
+
+| Sprint | HU comprometidas | PHU comprometidos actuales | HU en curso | HU aceptadas | PHU aceptados | Valor aceptado |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Sprint 1 | 10 | 27 | 1 | 0 | 0 | 0 |
 
 ## Cómo cerrar una fila
 
@@ -72,12 +80,12 @@ xychart-beta
 
 Al cerrar el Sprint 1 se agrega una serie de PHU aceptados para convertirlo en un velocity chart planificado frente a real.
 
-## Gráfico de la asignación histórica
+## Gráfico de la asignación vigente
 
 ```mermaid
 xychart-beta
     title "PHU de HU en Project 4"
     x-axis ["Sprint 1", "Sprint 2", "Sprint 3", "Sin asignar"]
     y-axis "PHU" 0 --> 40
-    bar [20, 25, 36, 19]
+    bar [27, 20, 34, 19]
 ```

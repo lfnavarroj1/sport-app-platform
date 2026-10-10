@@ -1,0 +1,55 @@
+# Acceso desde el equipo. Docker Desktop publica los Service LoadBalancer en
+# localhost. Los puertos evitan los que usan los scripts del backend
+# (PostgreSQL efímero 55432, emulador 58085).
+apiVersion: v1
+kind: Service
+metadata:
+  name: bff-web-local
+  labels:
+    app.kubernetes.io/component: local-access
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: bff-web
+  ports:
+    - {name: http, port: 18080, targetPort: http}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bff-mobile-local
+  labels:
+    app.kubernetes.io/component: local-access
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: bff-mobile
+  ports:
+    - {name: http, port: 18081, targetPort: http}
+---
+# Para ejecutar en el host el componente que se está desarrollando.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-local
+  labels:
+    app.kubernetes.io/component: local-access
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: postgres
+  ports:
+    - {name: postgres, port: 15432, targetPort: postgres}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pubsub-emulator-local
+  labels:
+    app.kubernetes.io/component: local-access
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: pubsub-emulator
+  ports:
+    - {name: grpc, port: 18085, targetPort: grpc}

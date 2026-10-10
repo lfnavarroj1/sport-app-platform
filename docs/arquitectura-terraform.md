@@ -60,7 +60,7 @@ flowchart TB
     W["Frontend<br/>imagen o paquete web"]
     M["Móvil<br/>APK o AAB"]
     L["Ambiente local<br/>desechable"]
-    G["Ambientes GCP<br/>dev, staging y producción"]
+    G["GCP<br/>producción; staging pendiente"]
 
     B -. digest .-> P
     W -. digest o checksum .-> P
@@ -81,13 +81,12 @@ sport-app-platform/
 │   │   │   ├── local/
 │   │   │   └── gcp/
 │   │   └── environments/
-│   │       ├── local/
-│   │       ├── development/
-│   │       ├── staging/
+│   │       ├── local/          # desarrollo (Docker Desktop)
+│   │       ├── staging/        # pendiente
 │   │       └── production/
 │   ├── kubernetes/
-│   │   ├── base/
-│   │   └── overlays/
+│   │   ├── local/              # dependencias compartidas de desarrollo
+│   │   └── production/         # pendiente
 │   └── policies/
 ├── orchestration/local/
 └── release-manifest.yaml
@@ -95,9 +94,11 @@ sport-app-platform/
 
 Cada carpeta de `environments/` es una raíz independiente. Los ambientes no se separan mediante workspaces de una única raíz; esto permite aislar estado, variables, identidad y aprobaciones.
 
-## Pruebas en local
+**Decisión del 2026-10-10:** el ambiente de desarrollo es local y corre completo en el Kubernetes de Docker Desktop (`environments/local`). GCP se usa solo para producción; `staging` queda pendiente. Por eso no existe una raíz `development` en GCP.
 
-El perfil local valida la integración sin conectarse a GCP. Terraform compone un Kubernetes local desechable —por ejemplo Docker Desktop— con frontend, BFF, microservicios, PostgreSQL y emulador de Pub/Sub.
+## Desarrollo local
+
+El ambiente de desarrollo valida la integración sin conectarse a GCP. Terraform compone en el Kubernetes de Docker Desktop aprovisionado con kubeadm (contexto `docker-desktop`, namespace `sportapp-local`) las dependencias que mantiene la plataforma —PostgreSQL, emulador de Pub/Sub y sus tópicos— con los manifiestos `deploy/k8s/base` del backend. Mientras no tenga imagen, el frontend se ejecuta en el host con `ng serve`.
 
 ```mermaid
 flowchart LR
@@ -155,9 +156,8 @@ flowchart TB
 
 | Raíz | Estado | Forma de aplicación |
 | --- | --- | --- |
-| `local` | local, ignorado por Git | desarrollador o CI desechable |
-| `development` | GCS exclusivo | aprobación técnica |
-| `staging` | GCS exclusivo | ambiente protegido y ensayo de release |
+| `local` (desarrollo) | local, ignorado por Git | desarrollador o CI desechable, sin GCP |
+| `staging` (pendiente) | GCS exclusivo | ambiente protegido y ensayo de release |
 | `production` | GCS exclusivo, protección reforzada | aprobación independiente sobre plan revisado |
 
 El bootstrap crea los buckets de estado, versionado, bloqueo y permisos mínimos. Terraform crea recursos y referencias a secretos, pero no guarda valores secretos. Las imágenes se despliegan por digest tomado de `release-manifest.yaml`.
@@ -176,7 +176,7 @@ flowchart LR
 
 - En ramas se ejecutan controles sin credenciales privilegiadas.
 - En pull requests se genera un plan seguro; nunca se ejecuta `apply` desde código no confiable.
-- `development`, `staging` y `production` usan identidades y estados diferentes.
+- `staging` y `production` usan identidades y estados diferentes; desarrollo no usa credenciales de nube.
 - Si cambia el commit o el estado después de revisar el plan, se genera y aprueba uno nuevo.
 - Las pruebas que crean recursos deben usar destinos efímeros y ejecutar limpieza incluso ante fallos.
 
@@ -189,7 +189,7 @@ flowchart LR
 | `suspend` | pausa corta | Cloud Run usa mínimo `0`, GKE reduce nodos y Cloud SQL se detiene; pueden continuar cobros de almacenamiento, IP, balanceadores, control plane, imágenes y logs |
 | `destroy` | ambiente no productivo recreable | se revisa `terraform plan -destroy` y se eliminan los recursos administrados por la raíz del ambiente |
 
-`development` se crea bajo demanda y se destruye al terminar la ventana de trabajo. `staging` se destruye después del ensayo y de conservar la evidencia necesaria. Producción nunca se incluye en una destrucción programada.
+Desarrollo no genera costos en GCP: se crea y destruye en Docker Desktop con `terraform apply` y `terraform destroy`. `staging`, cuando exista, se destruirá después del ensayo y de conservar la evidencia necesaria. Producción nunca se incluye en una destrucción programada.
 
 El estado Terraform y la automatización se conservan en un proyecto de gestión separado de las cargas desechables. Así se puede reconstruir un ambiente después de destruirlo. Las copias, imágenes o datos que se decida conservar pueden seguir generando costos.
 
@@ -205,9 +205,11 @@ La deshabilitación de facturación se reserva para una emergencia: Google detie
 
 ## Estado de implementación
 
-La decisión y la arquitectura están aprobadas. Desde el 2026-10-10, `infra/terraform/` contiene el bootstrap (`bootstrap/gcp-state`), los módulos GCP y las raíces `development` y `production`. Su uso y los supuestos pendientes de ratificar se describen en [`infra/terraform/README.md`](../infra/terraform/README.md).
+La decisión y la arquitectura están aprobadas. Desde el 2026-10-10, `infra/terraform/` contiene la raíz `local` (desarrollo en Docker Desktop), el bootstrap (`bootstrap/gcp-state`), los módulos GCP y la raíz `production`. Su uso y los supuestos pendientes se describen en [`infra/terraform/README.md`](../infra/terraform/README.md).
 
-El código se verificó con `terraform validate` y con `terraform test` usando proveedores simulados. Todavía no se ha aplicado en GCP, por lo que no existe un ambiente operativo. Siguen pendientes las raíces `staging` y `local`, los workflows y los manifiestos Kubernetes de GCP.
+Antes del primer `apply`, complete la [Preparación local y de GCP para Terraform](preparacion-terraform-local-gcp.md): activar el clúster kubeadm local o preparar proyectos, credenciales, estado y presupuesto de GCP.
+
+La raíz `local` se aplicó en Docker Desktop y se verificó con un registro de usuario de punta a punta (BFF, servicio, PostgreSQL, outbox y Pub/Sub). La raíz de producción se verificó con `terraform validate` y `terraform test` con proveedores simulados, pero todavía no se ha aplicado en GCP. Siguen pendientes `staging`, los workflows y el overlay Kubernetes de producción.
 
 ## Referencias
 

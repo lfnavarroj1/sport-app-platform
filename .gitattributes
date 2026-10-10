@@ -1,0 +1,2 @@
+# Scripts que se ejecutan en contenedores Linux: siempre LF, incluso en Windows.
+*.sh text eol=lf
