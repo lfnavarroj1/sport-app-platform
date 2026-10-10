@@ -21,6 +21,7 @@ La decisión de ambientes está en ADR-022: desarrollo es local y GCP se usa sol
    - [4.4 Preparar el backend y sus imágenes](#44-preparar-el-backend-y-sus-imágenes)
    - [4.5 Archivo de variables local](#45-archivo-de-variables-local)
    - [4.6 Primer apply](#46-primer-apply)
+   - [4.7 Actualizar el backend](#47-actualizar-el-backend)
 5. [Plataforma GCP: producción](#5-plataforma-gcp-producción)
    - [5.1 Decidir los identificadores](#51-decidir-los-identificadores)
    - [5.2 Crear los proyectos y vincular la facturación](#52-crear-los-proyectos-y-vincular-la-facturación)
@@ -192,6 +193,53 @@ curl.exe http://localhost:18080/health/ready
 
 La plataforma local queda lista cuando todos los pods están en `Running`, los Jobs en `Complete` y el BFF responde `200`. El uso diario continúa en la guía de Terraform (sección 4).
 
+### 4.7 Actualizar el backend
+
+Las secciones 4.1 a 4.6 se hacen **una sola vez**. Cuando cambia el código del backend no se actualiza la infraestructura: PostgreSQL, el emulador, los secretos y la configuración quedan intactos. Solo se reemplaza la imagen de los componentes que cambiaron.
+
+Elige la forma según el cambio:
+
+| Situación | Qué se hace | Tiempo |
+| --- | --- | --- |
+| A. Programando activamente un servicio | ejecutarlo en el host con recarga automática, contra la base y el Pub/Sub del clúster | inmediato; sin imagen ni `apply` |
+| B. Cambio sin migraciones | reconstruir con el mismo tag `local` y reiniciar el Deployment | segundos |
+| C. Cambio con migraciones, o varios componentes | construir con un tag nuevo y ejecutar `terraform apply` | alrededor de 30 segundos |
+
+Los nombres de componente son: `users-management`, `affiliation-management`, `complementary-services`, `training-management`, `events-management`, `third-party-management`, `bff-web` y `bff-mobile`.
+
+**A. Servicio en el host.** Se usan los accesos que el clúster publica en `localhost`: PostgreSQL en `15432` y el emulador en `18085`. La configuración y la contraseña se obtienen como indica la guía de Terraform, sección 4.6. Si no quieres que la versión del clúster atienda en paralelo, aplica con `-var="deploy_backend=false"`.
+
+**B. Cambio sin migraciones.** En `aplicacion_proyecto_final\backend`:
+
+```powershell
+py -3.13 -m uv run python scripts/task.py build users-management
+kubectl --context docker-desktop --namespace sportapp-local rollout restart deployment/users-management
+kubectl --context docker-desktop --namespace sportapp-local rollout status deployment/users-management
+```
+
+Funciona porque el clúster kubeadm comparte las imágenes con Docker: al reiniciar, el pod toma la imagen recién construida con el tag `local`. Si el componente tiene publicador outbox (hoy, `users-management`), reinicia también `deployment/users-management-outbox-publisher`. Este reinicio **no** vuelve a ejecutar las migraciones.
+
+**C. Cambio con migraciones, o varios componentes.** En `aplicacion_proyecto_final\backend`:
+
+```powershell
+$tag = "dev-" + (Get-Date -Format "yyyyMMdd-HHmm")
+py -3.13 -m uv run python scripts/task.py build all --tag $tag
+```
+
+En `platform\infra\terraform\environments\local`:
+
+```powershell
+terraform plan -out=tfplan -var="backend_image_tag=$tag"
+terraform apply tfplan
+kubectl --context docker-desktop --namespace sportapp-local get pods,jobs
+```
+
+El plan debe mostrar los Deployments como *update in-place* y los Jobs de migración como *must be replaced*: las migraciones se ejecutan de nuevo y luego los pods pasan a la imagen nueva. Para no repetir el tag en cada comando, guárdalo como `backend_image_tag` en `local.auto.tfvars`. Si reconstruiste solo algunos componentes, declara únicamente esos en `backend_image_tags` dentro del mismo archivo.
+
+**Si cambiaron los manifiestos del backend** (`deploy/k8s/base`: un componente, una variable o un Job nuevos), basta con actualizar el clon del backend y ejecutar `terraform plan` y `terraform apply`. Terraform lee los manifiestos directamente del clon.
+
+Las imágenes antiguas se limpian con `docker image prune`.
+
 ## 5. Plataforma GCP: producción
 
 Esta preparación se hace **una sola vez** y modifica recursos facturables. Ejecútala solo después de revisar nombres, permisos y presupuesto.
@@ -270,6 +318,7 @@ notepad bootstrap.auto.tfvars
 | `environments.production.project_id` | `$production` |
 | `environments.production.operators` | `["user:<tu-correo>"]`: quienes pueden ejecutar Terraform en producción |
 | `environments.production.budget_amount` | presupuesto mensual; la estimación de costos fija `1000` (USD) como tope inicial |
+| `environments.production.budget_alert_amounts` | montos en los que quieres recibir aviso, por ejemplo `[50, 100, 250, 500]`. También se avisa al 100 % y cuando el pronóstico supera el presupuesto. Si se deja vacío, los avisos son al 50 %, 90 % y 100 % |
 | `environments.production.component_delivery` | `true`: backend y frontend publican imágenes de release |
 | `billing_account` | `$billing` |
 | `budget_currency` | moneda de la cuenta de facturación (`USD`, `COP`, …) |

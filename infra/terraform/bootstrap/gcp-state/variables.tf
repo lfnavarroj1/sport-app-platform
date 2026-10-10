@@ -24,11 +24,19 @@ variable "component_repositories" {
 variable "environments" {
   description = "Ambientes GCP. Cada uno exige un proyecto propio y ya creado con facturación."
   type = map(object({
-    project_id         = string
-    operators          = optional(list(string), [])
-    budget_amount      = optional(number, 0)
-    component_delivery = optional(bool, false) # crea ci-delivery-<ambiente> para backend/frontend
+    project_id           = string
+    operators            = optional(list(string), [])
+    budget_amount        = optional(number, 0)
+    budget_alert_amounts = optional(list(number), []) # avisos en montos absolutos; vacío = 50 %, 90 % y 100 %
+    component_delivery   = optional(bool, false)      # crea ci-delivery-<ambiente> para backend/frontend
   }))
+
+  validation {
+    condition = alltrue(flatten([
+      for e in values(var.environments) : [for a in e.budget_alert_amounts : a > 0 && a <= e.budget_amount]
+    ]))
+    error_message = "Cada monto de budget_alert_amounts debe ser mayor que 0 y no superar budget_amount."
+  }
 
   validation {
     condition     = alltrue([for k in keys(var.environments) : contains(["development", "staging", "production"], k)])

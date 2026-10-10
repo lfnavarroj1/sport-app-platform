@@ -18,10 +18,11 @@ github_repository = "lfnavarroj1/sport-app-platform"
 # Desarrollo no aparece aquí: se ejecuta en local (environments/local).
 environments = {
   production = {
-    project_id         = "sportapp-prod-000000"
-    operators          = ["user:operador@example.com"]
-    budget_amount      = 1000 # tope inicial de la estimación de costos (wiki 06-8)
-    component_delivery = true # las releases de backend/frontend publican sus imágenes aquí
+    project_id           = "sportapp-prod-000000"
+    operators            = ["user:operador@example.com"]
+    budget_amount        = 1000                 # tope inicial de la estimación de costos (wiki 06-8)
+    budget_alert_amounts = [50, 100, 250, 500]  # avisos en USD, además del 100 % y del pronóstico
+    component_delivery   = true                 # las releases de backend/frontend publican sus imágenes aquí
   }
 }
 
