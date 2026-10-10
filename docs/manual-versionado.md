@@ -6,6 +6,8 @@ Este archivo se publicará como `docs/manual-versionado.md` en `sport-app-platfo
 
 Este manual define cómo se relacionan los sprints, las historias de usuario, las ramas, las versiones de componentes y las versiones integradas de `sport-app-platform`.
 
+El flujo de automatización, los efectos de cada push y el lanzamiento de una composición completa se detallan en el [esquema de CI y release](esquema-ci-y-release.md).
+
 Se aplican dos reglas de negocio acordadas:
 
 1. cada HU se implementa como un `feature` trazable;
