@@ -1,0 +1,36 @@
+# Copiar como bootstrap.auto.tfvars (ignorado por Git). Sin llaves ni contraseñas:
+# el bootstrap lo ejecuta una persona administradora con
+#   gcloud auth application-default login
+#
+# Requisitos previos (manuales, una vez):
+# - tres proyectos creados y vinculados a la cuenta de facturación:
+#   gestión, desarrollo y producción;
+# - la persona que ejecuta tiene roles/owner en los tres y
+#   roles/billing.costsManager (o admin) en la cuenta de facturación si se
+#   crean presupuestos.
+
+# Proyecto de gestión: estado, WIF y cuentas de despliegue. Nunca se destruye.
+management_project_id = "sportapp-mgmt-000000"
+
+region            = "us-central1"
+github_repository = "lfnavarroj1/sport-app-platform"
+
+environments = {
+  development = {
+    project_id         = "sportapp-dev-000000"
+    operators          = ["user:operador@example.com"]
+    budget_amount      = 50
+    component_delivery = true # backend y frontend publican imágenes aquí
+  }
+  production = {
+    project_id         = "sportapp-prod-000000"
+    operators          = ["user:operador@example.com"]
+    budget_amount      = 300
+    component_delivery = false # las imágenes llegan por promoción, no por build
+  }
+}
+
+# Cuenta de facturación para presupuestos; null los omite.
+# gcloud billing accounts list
+billing_account = "000000-000000-000000"
+budget_currency = "USD"

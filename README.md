@@ -59,7 +59,7 @@ Un push de plataforma se realiza con `git push --no-recurse-submodules origin <r
 
 ## Infraestructura
 
-Terraform, la composición por ambiente y la promoción coordinada pertenecen a `sport-app-platform` porque afectan conjuntamente backend, frontend y servicios compartidos. Cada componente conserva sus `Dockerfile`, pruebas, migraciones y configuración interna. La decisión está aprobada y documentada; los módulos, estados y workflows aún deben implementarse.
+Terraform, la composición por ambiente y la promoción coordinada pertenecen a `sport-app-platform` porque afectan conjuntamente backend, frontend y servicios compartidos. Cada componente conserva sus `Dockerfile`, pruebas, migraciones y configuración interna. Las raíces de [desarrollo y producción en GCP](infra/terraform/README.md) están implementadas y verificadas sin credenciales, pero todavía no se han aplicado. Siguen pendientes `staging`, `local` y los workflows.
 
 Los ambientes no productivos serán recreables: `suspend` reducirá cómputo con posibles costos residuales y `destroy` eliminará los recursos después de revisar un plan. Deshabilitar la facturación se reserva para emergencias; la [arquitectura Terraform](docs/arquitectura-terraform.md) contiene el procedimiento y los controles de presupuesto.
 

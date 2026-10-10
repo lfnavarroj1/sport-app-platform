@@ -1,0 +1,39 @@
+# Cuenta GCP y acceso de DESARROLLO.
+#
+#   copy gcp.auto.tfvars.example gcp.auto.tfvars    (PowerShell/cmd)
+#   cp   gcp.auto.tfvars.example gcp.auto.tfvars    (bash)
+#
+# gcp.auto.tfvars está ignorado por Git y Terraform lo carga solo.
+# Este archivo NO lleva llaves ni contraseñas: Terraform se autentica con
+# Application Default Credentials e impersona la cuenta creada por el bootstrap.
+#   gcloud auth login
+#   gcloud auth application-default login
+# En CI se omiten estos valores y se pasan como TF_VAR_* desde el GitHub
+# Environment "development".
+
+# Proyecto exclusivo de desarrollo, con facturación habilitada.
+project_id = "sportapp-dev-000000"
+
+# Salida "apply_service_accounts.development" del bootstrap.
+# Su cuenta de usuario necesita roles/iam.serviceAccountTokenCreator sobre ella
+# (el bootstrap la concede a los operators). Dejar en null cuando se use WIF.
+impersonate_service_account = "tf-apply-development@sportapp-mgmt-000000.iam.gserviceaccount.com"
+
+# Destinatarios de alertas de Cloud Monitoring.
+alert_emails = ["equipo-sportapp@example.com"]
+
+# IP pública desde la que opera kubectl por el endpoint IP (opcional: el
+# endpoint DNS funciona sin esto, autorizado por IAM).
+gke_authorized_networks = [
+  # { cidr_block = "203.0.113.10/32", display_name = "operador" },
+]
+
+# Cuenta que usan backend/frontend para publicar imágenes (salida
+# "delivery_service_accounts.development" del bootstrap).
+artifact_registry_writers = {
+  component-ci = "serviceAccount:ci-delivery-development@sportapp-mgmt-000000.iam.gserviceaccount.com"
+}
+
+labels = {
+  owner = "equipo-sportapp"
+}

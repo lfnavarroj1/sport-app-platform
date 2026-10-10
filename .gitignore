@@ -10,10 +10,15 @@
 *.tfstate
 *.tfstate.*
 *.tfplan
+tfplan*
 crash.log
 crash.*.log
 *.auto.tfvars
 *.auto.tfvars.json
+backend.hcl
+# Llaves de cuentas de servicio: no se usan; se bloquean por si alguien las descarga.
+*credentials*.json
+*-key.json
 
 # Herramientas y sistema operativo
 .vscode/
