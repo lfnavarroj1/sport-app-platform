@@ -23,23 +23,26 @@ Para comenzar solo con Terraform, documentación o automatización:
 
 ```text
 cd "D:\04 - Mestría en Ingeniería de Software\08 - Ciclo 8\Proyecto final II\aplicacion_proyecto_final"
-git clone https://github.com/lfnavarroj1/sport-app-platform.git platform
+git clone --no-recurse-submodules https://github.com/lfnavarroj1/sport-app-platform.git platform
 cd platform
+git config --local submodule.recurse false
+git config --local fetch.recurseSubmodules false
+git config --local push.recurseSubmodules no
+git submodule status
 ```
 
-El clonado normal trae únicamente el repositorio de plataforma. Registra los punteros de `components/backend`, `components/frontend` y `components/mobile`, pero no descarga su contenido. Para traer también los tres repositorios:
+El prefijo `-` de las tres líneas de `git submodule status` confirma que únicamente se descargó la plataforma. Los punteros de `components/backend`, `components/frontend` y `components/mobile` están registrados, pero sus árboles no están inicializados.
+
+`.gitmodules` define `update = none` y deshabilita el *fetch* recursivo. No se usa `git clone --recurse-submodules` para el desarrollo de Terraform. Cuando integración/E2E necesite expresamente los tres componentes:
 
 ```text
-git clone --recurse-submodules https://github.com/lfnavarroj1/sport-app-platform.git platform
-```
-
-Si la plataforma ya está clonada:
-
-```text
-git submodule update --init --recursive
+git submodule sync --recursive
+git submodule update --init --checkout components/backend components/frontend components/mobile
 ```
 
 Los submódulos son árboles adicionales fijados a versiones de integración; no reemplazan las carpetas `backend`, `frontend` y `movil` donde se desarrolla cada producto.
+
+El push del trabajo de Terraform usa `git push --no-recurse-submodules origin <rama>`. No se emplea `--recurse-submodules=on-demand`; por tanto, el repositorio padre no publica commits de los componentes. Un cambio del puntero `components/*` se acepta únicamente mediante un PR de actualización de release que modifique también el manifiesto.
 
 ## Distribución de responsabilidades
 

@@ -34,10 +34,17 @@ flowchart TB
 Para trabajar solo en Terraform o en la plataforma, clone el repositorio como carpeta hermana de los demás proyectos. Este comando **no** descarga el contenido de los submódulos:
 
 ```text
-git clone https://github.com/lfnavarroj1/sport-app-platform.git platform
+git clone --no-recurse-submodules https://github.com/lfnavarroj1/sport-app-platform.git platform
+cd platform
+git config --local submodule.recurse false
+git config --local fetch.recurseSubmodules false
+git config --local push.recurseSubmodules no
+git submodule status
 ```
 
-Para ejecutar la integración completa, use `git clone --recurse-submodules ...` o, dentro de un clon existente, `git submodule update --init --recursive`. Los árboles creados bajo `components/` son copias fijadas a la versión integrada y no reemplazan los clones de desarrollo de backend, frontend o móvil.
+El prefijo `-` en cada línea de `git submodule status` confirma que los componentes siguen sin inicializar. `.gitmodules` los deja además con `update = none`. Solo los jobs de integración/E2E los habilitan expresamente con `git submodule update --init --checkout`. Los árboles creados bajo `components/` no reemplazan los clones de desarrollo.
+
+Un push de plataforma se realiza con `git push --no-recurse-submodules origin <rama>`; así no intenta publicar backend, frontend ni móvil. La actualización de un puntero de componente es un cambio de release deliberado y requiere su propio PR y manifiesto.
 
 ## Gestión del proyecto
 
