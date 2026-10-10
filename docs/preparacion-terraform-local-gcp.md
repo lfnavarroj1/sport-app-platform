@@ -18,10 +18,10 @@ La decisión de ambientes está en ADR-022: desarrollo es local y GCP se usa sol
    - [4.1 Preparar Docker Desktop](#41-preparar-docker-desktop)
    - [4.2 Activar Kubernetes con kubeadm](#42-activar-kubernetes-con-kubeadm)
    - [4.3 Verificar que el clúster es kubeadm](#43-verificar-que-el-clúster-es-kubeadm)
-   - [4.4 Preparar el backend y sus imágenes](#44-preparar-el-backend-y-sus-imágenes)
+   - [4.4 Preparar las imágenes de backend y frontend](#44-preparar-las-imágenes-de-backend-y-frontend)
    - [4.5 Archivo de variables local](#45-archivo-de-variables-local)
    - [4.6 Primer apply](#46-primer-apply)
-   - [4.7 Actualizar el backend](#47-actualizar-el-backend)
+   - [4.7 Actualizar backend y frontend](#47-actualizar-backend-y-frontend)
 5. [Plataforma GCP: producción](#5-plataforma-gcp-producción)
    - [5.1 Decidir los identificadores](#51-decidir-los-identificadores)
    - [5.2 Crear los proyectos y vincular la facturación](#52-crear-los-proyectos-y-vincular-la-facturación)
@@ -72,7 +72,7 @@ Estructura esperada:
 ```text
 aplicacion_proyecto_final/
 ├── backend/        # sport-app-backend: lo usa el ambiente local
-├── frontend/
+├── frontend/       # sport-app-frontend: imagen sportapp/web
 ├── movil/
 ├── documentacion/
 └── platform/       # sport-app-platform: Terraform
@@ -89,6 +89,7 @@ aplicacion_proyecto_final/
 | Git | sí | sí | `winget install --id Git.Git -e` | `git version` |
 | GitHub CLI | — | para CI | `winget install --id GitHub.cli -e` | `gh --version` |
 | Python 3.13 y uv | sí (para construir el backend) | — | README del backend, pasos 2 y 5 | `py -3.13 -m uv --version` |
+| Node.js 24.14.0 | solo para `npm start` del frontend; la imagen se construye con Docker | — | versión de `frontend/.nvmrc` | `node --version` |
 
 Después de instalar, cierra y vuelve a abrir PowerShell para que se actualice el `PATH`.
 
@@ -149,17 +150,26 @@ Resultado esperado:
 
 No hace falta cambiar el contexto activo: la raíz Terraform local fija `docker-desktop` y rechaza cualquier otro.
 
-### 4.4 Preparar el backend y sus imágenes
+### 4.4 Preparar las imágenes de backend y frontend
 
-El ambiente local despliega los manifiestos `deploy/k8s/base` del clon del backend y sus imágenes `sportapp/<componente>:<tag>`.
+Cada imagen se construye desde **su propio repositorio** y queda en el Docker del equipo, que el clúster kubeadm usa directamente. La misma imagen es la que se publica para producción.
+
+| Componente | Repositorio | Imágenes | Comando |
+| --- | --- | --- | --- |
+| Backend | `aplicacion_proyecto_final\backend` | 8 imágenes `sportapp/<componente>:local` | `py -3.13 -m uv run python scripts/task.py build all` |
+| Frontend | `aplicacion_proyecto_final\frontend` | `sportapp/web:local` | `docker build -t sportapp/web:local .` |
 
 ```powershell
 cd ..\backend
-py -3.13 -m uv run python scripts/task.py build all     # 8 imágenes con tag "local"
-docker images "sportapp/*"
+py -3.13 -m uv run python scripts/task.py build all
+
+cd ..\frontend
+docker build -t sportapp/web:local .
+
+docker images "sportapp/*"      # 9 imágenes
 ```
 
-El frontend todavía no tiene imagen: en desarrollo se ejecuta con `npm start` (ver la guía de Terraform, sección 5.3).
+**Estado del frontend:** su `Dockerfile` y sus manifiestos `deploy/k8s/base` están solicitados al equipo frontend en la tarea `arquitectura/guias-desarrollo/andamiaje-inicial/08-tarea-agente-frontend-contenedor-y-kubernetes.md` de la documentación central. Su integración a la composición local de la plataforma queda pendiente hasta esa entrega. Mientras tanto, el frontend se ejecuta con `npm start` (guía de Terraform, sección 5.3) y el ambiente local trabaja con las 8 imágenes del backend.
 
 ### 4.5 Archivo de variables local
 
@@ -189,11 +199,12 @@ terraform plan -out=tfplan
 terraform apply tfplan
 kubectl --context docker-desktop --namespace sportapp-local get pods
 curl.exe http://localhost:18080/health/ready
+curl.exe http://localhost:18082/healthz          # frontend, cuando esté integrado
 ```
 
-La plataforma local queda lista cuando todos los pods están en `Running`, los Jobs en `Complete` y el BFF responde `200`. El uso diario continúa en la guía de Terraform (sección 4).
+La plataforma local queda lista cuando todos los pods están en `Running`, los Jobs en `Complete` y el BFF responde `200`. Una vez integrado el frontend, la aplicación web se abre en `http://localhost:18082`. El uso diario continúa en la guía de Terraform (sección 4).
 
-### 4.7 Actualizar el backend
+### 4.7 Actualizar backend y frontend
 
 Las secciones 4.1 a 4.6 se hacen **una sola vez**. Cuando cambia el código del backend no se actualiza la infraestructura: PostgreSQL, el emulador, los secretos y la configuración quedan intactos. Solo se reemplaza la imagen de los componentes que cambiaron.
 
@@ -237,6 +248,16 @@ kubectl --context docker-desktop --namespace sportapp-local get pods,jobs
 El plan debe mostrar los Deployments como *update in-place* y los Jobs de migración como *must be replaced*: las migraciones se ejecutan de nuevo y luego los pods pasan a la imagen nueva. Para no repetir el tag en cada comando, guárdalo como `backend_image_tag` en `local.auto.tfvars`. Si reconstruiste solo algunos componentes, declara únicamente esos en `backend_image_tags` dentro del mismo archivo.
 
 **Si cambiaron los manifiestos del backend** (`deploy/k8s/base`: un componente, una variable o un Job nuevos), basta con actualizar el clon del backend y ejecutar `terraform plan` y `terraform apply`. Terraform lee los manifiestos directamente del clon.
+
+**Frontend** (cuando esté integrado a la composición local). En `aplicacion_proyecto_final\frontend`:
+
+```powershell
+docker build -t sportapp/web:local .
+kubectl --context docker-desktop --namespace sportapp-local rollout restart deployment/web
+kubectl --context docker-desktop --namespace sportapp-local rollout status deployment/web
+```
+
+El frontend no tiene migraciones, así que el reinicio basta. Para programar con recarga automática, sigue disponible `npm start`.
 
 Las imágenes antiguas se limpian con `docker image prune`.
 
@@ -393,7 +414,7 @@ GitHub Actions usa WIF: credenciales temporales por OIDC, nunca llaves en *Secre
 
 1. En `sport-app-platform`, crea el Environment `production` con *required reviewers*.
 2. Crea las variables del repositorio `GCP_WORKLOAD_IDENTITY_PROVIDER`, `PROD_PROJECT_ID`, `PROD_STATE_BUCKET`, `PROD_TF_PLAN_SA`, `PROD_TF_APPLY_SA`, `PROD_ALERT_EMAILS` y `PROD_ARTIFACT_REGISTRY_WRITERS`.
-3. En backend y frontend, crea el Environment `production` con `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DELIVERY_SERVICE_ACCOUNT`, `GCP_ARTIFACT_REGISTRY` y `GCP_ARTIFACT_REGISTRY_HOST`.
+3. En backend y frontend, crea el Environment `production` con `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DELIVERY_SERVICE_ACCOUNT`, `GCP_ARTIFACT_REGISTRY` y `GCP_ARTIFACT_REGISTRY_HOST`. Los usan los workflows de release que publican las imágenes del backend y la imagen `web` del frontend (`release-web.yml`) en Artifact Registry; el despliegue lo hace Terraform.
 
 ```powershell
 gh variable set PROD_TF_APPLY_SA --repo lfnavarroj1/sport-app-platform --body "tf-apply-production@$mgmt.iam.gserviceaccount.com"
@@ -423,9 +444,11 @@ El `.gitignore` de la plataforma ya cubre todos los casos. Antes de un commit, r
 - [ ] Docker Desktop usa WSL 2 y contenedores Linux.
 - [ ] Kubernetes está en verde y fue creado con **kubeadm**.
 - [ ] `kubectl --context docker-desktop get nodes` muestra `Ready` y runtime `docker://`.
-- [ ] Las 8 imágenes `sportapp/*` existen en `docker images`.
+- [ ] Las 8 imágenes del backend `sportapp/*` existen en `docker images`.
+- [ ] La imagen `sportapp/web:local` del frontend existe (cuando el frontend entregue su `Dockerfile`).
 - [ ] `terraform apply` en `environments/local` deja todos los pods en `Running`.
 - [ ] `http://localhost:18080/health/ready` responde `200`.
+- [ ] `http://localhost:18082/healthz` responde `200` (cuando el frontend esté integrado).
 
 ### GCP
 
@@ -443,7 +466,7 @@ El `.gitignore` de la plataforma ya cubre todos los casos. Antes de un commit, r
 | Síntoma | Causa | Solución |
 | --- | --- | --- |
 | No existe el contexto `docker-desktop` | Kubernetes no está activado | [4.2](#42-activar-kubernetes-con-kubeadm) |
-| Pods en `ErrImagePull` con imágenes `sportapp/*` | el clúster es kind o falta la imagen | recrea el clúster con kubeadm o ejecuta [4.4](#44-preparar-el-backend-y-sus-imágenes) |
+| Pods en `ErrImagePull` con imágenes `sportapp/*` | el clúster es kind o falta la imagen | recrea el clúster con kubeadm o ejecuta [4.4](#44-preparar-las-imágenes-de-backend-y-frontend) |
 | *Kubernetes failed to start* | estado corrupto del clúster | *Settings → Kubernetes → Reset Kubernetes cluster* |
 | `El ambiente local solo se aplica en el contexto docker-desktop` | se pasó otro contexto | no cambies `kube_context` |
 | `gcloud projects create` falla por el ID | el ID ya existe en GCP | elige otro sufijo |
