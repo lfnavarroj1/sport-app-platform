@@ -49,18 +49,25 @@ Una HU se considera terminada solamente cuando, según aplique:
 - está integrada en la rama acordada y tiene evidencia de CI;
 - fue demostrada y aceptada en la revisión del sprint.
 
-Un backend aislado, una pantalla con datos simulados o una rama sin integrar se registra como avance parcial, pero no suma velocidad ni valor entregado.
+Además, todas las tareas técnicas requeridas por su canal deben estar entregadas e integradas: `T-HUxxx-BE` + `T-HUxxx-WEB` en HU001–HU025, más `T-HU003-MOB` en HU003, y `T-HUxxx-BE` + `T-HUxxx-MOB` en HU026–HU040.
+
+Un backend aislado, una pantalla con datos simulados, una rama sin integrar o una tarea técnica terminada se registran como avance parcial, pero no suman velocidad ni valor entregado.
 
 ## Estados permitidos
 
+Son los mismos estados del Project 4 y de la documentación central.
+
 | Estado | Uso |
 | --- | --- |
-| No iniciada | No existe trabajo verificable de la HU. |
-| En curso | Existe trabajo activo, sin incremento vertical completo. |
+| Backlog | No existe trabajo verificable de la HU. |
+| Preparada | Las tareas obligatorias están identificadas y no hay ambigüedades bloqueantes para iniciar. |
+| En curso | Al menos una tarea técnica tiene rama y responsable; no hay incremento vertical completo. |
 | Bloqueada | No puede avanzar por una dependencia o decisión explícita. |
-| En revisión | El incremento está completo para el equipo y espera validación o aceptación. |
+| En revisión | Todas las tareas requeridas están entregadas y existe una versión integrable que espera validación. |
 | Aceptada | Cumple la definición de terminado y fue aceptada. |
 | Retirada | Salió del alcance mediante una decisión registrada. |
+
+Las tareas `T-HUxxx-*` registran su propio estado (por ejemplo, una tarea móvil `Bloqueada`), pero la HU solo cambia según las condiciones anteriores. Si un bloqueo de tarea impide el resultado, la HU se marca `Bloqueada` o mantiene el riesgo explícito.
 
 No use porcentajes subjetivos como «90 % terminada» para calcular velocidad. El trabajo parcial se explica cualitativamente y conserva sus PHU pendientes.
 

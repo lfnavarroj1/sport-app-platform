@@ -12,7 +12,7 @@ Datos históricos verificados el 9 de octubre de 2026 en el Project 2 del equipo
 | Sin asignar | — | — | 7 | 19 | Ausentes del Project 2 |
 | **Total** | — | **49 días** | **40** | **100** | **33 históricas; 7 sin asignar** |
 
-La relación detallada de HU por sprint está en [Planeación y sprints](../wiki/02-planeacion-y-sprints.md#historias-por-sprint).
+La relación detallada de HU por sprint está en [Planeación y sprints](https://github.com/lfnavarroj1/sport-app-platform/wiki/02-planeacion-y-sprints#historias-por-sprint).
 
 ## Carga inicial del Project 4
 
@@ -52,17 +52,19 @@ Esta tabla pertenece al ciclo actual. Se completa exclusivamente con aceptación
 | Sprint 2 | Pendiente de ratificar | 2026-10-19 | 2026-11-01 | 28 | 20 | `N/D` | `N/D` | `N/D` | `N/D` | — |
 | Sprint 3 | Pendiente de formular | 2026-11-02 | 2026-11-22 | 42 | 34 | `N/D` | `N/D` | `N/D` | `N/D` | — |
 
-### Corte operativo del 10 de octubre
+### Corte operativo del 11 de octubre
 
 | Sprint | HU comprometidas | PHU comprometidos actuales | HU en curso | HU aceptadas | PHU aceptados | Valor aceptado |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Sprint 1 | 10 | 27 | 1 | 0 | 0 | 0 |
+| Sprint 1 | 10 | 27 | 2 (HU001 y HU003) | 0 | 0 | 0 |
+
+HU001 y HU003 siguen abiertas: sus tareas técnicas avanzan, pero ninguna HU fue aceptada, así que velocidad, throughput y valor entregado continúan en cero. `T-HU003-MOB` está bloqueada por el andamiaje móvil.
 
 ## Cómo cerrar una fila
 
 1. Congele la lista de HU comprometidas al terminar la planeación.
 2. Registre por separado cualquier cambio de alcance.
-3. Cuente solo HU aceptadas.
+3. Cuente solo HU aceptadas; las tareas `T-HUxxx-*` y los PR no suman PHU ni valor.
 4. Calcule `Predictibilidad = PHU aceptados / PHU comprometidos`.
 5. Enlace la revisión del sprint y las ejecuciones de CI.
 

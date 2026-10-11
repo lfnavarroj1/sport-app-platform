@@ -39,6 +39,24 @@ variable "backend_image_tags" {
   default     = {}
 }
 
+variable "deploy_frontend" {
+  description = "Despliega la aplicación web (imagen sportapp/web) con acceso en localhost:18082."
+  type        = bool
+  default     = true
+}
+
+variable "frontend_path" {
+  description = "Repositorio frontend, relativo a esta carpeta (clon hermano o components/frontend)."
+  type        = string
+  default     = "../../../../../frontend"
+}
+
+variable "frontend_image_tag" {
+  description = "Tag de la imagen sportapp/web construida con docker build en el frontend."
+  type        = string
+  default     = "local"
+}
+
 variable "log_level" {
   description = "LOG_LEVEL de todos los componentes."
   type        = string
@@ -53,6 +71,12 @@ variable "registration_policies_version" {
 
 variable "password_revision" {
   description = "Incrementar regenera las contraseñas; exige recrear PostgreSQL (ver README)."
+  type        = number
+  default     = 1
+}
+
+variable "jwt_key_revision" {
+  description = "Incrementar para rotar la clave Ed25519 que firma los access tokens locales."
   type        = number
   default     = 1
 }

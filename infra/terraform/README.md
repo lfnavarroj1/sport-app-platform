@@ -79,7 +79,7 @@ Desarrollo no usa GCP ni credenciales en la nube. Implementa la [arquitectura Te
 | | Desarrollo (local) | Producción (GCP) |
 | --- | --- | --- |
 | Kubernetes | Docker Desktop aprovisionado con kubeadm, contexto `docker-desktop`, namespace `sportapp-local` | GKE regional privado |
-| Web y BFF | BFF en Kubernetes; la web corre con `ng serve` | Cloud Run (`web`, `bff-web`, `bff-mobile`) |
+| Web y BFF | `web`, `bff-web` y `bff-mobile` en Kubernetes, con la misma imagen que producción | Cloud Run (`web`, `bff-web`, `bff-mobile`) |
 | PostgreSQL | un pod con las 8 bases y un rol por dominio | Cloud SQL regional (HA) con PITR |
 | Pub/Sub | emulador con los mismos tópicos, suscripciones y DLQ | Pub/Sub con IAM por carga |
 | Contraseñas | generadas, en el Secret `sportapp-database` | generadas, en Secret Manager |
@@ -92,15 +92,19 @@ En ambos ambientes se usan los mismos nombres: bases `usuarios_write/read`, `afi
 ```mermaid
 flowchart LR
     subgraph PC[Tu equipo]
-      NG[ng serve :4200]
+      NAV[Navegador]
+      NG[ng serve :4200<br/>opcional]
       IDE[Componente en el IDE<br/>opcional]
       subgraph DD[Docker Desktop · sportapp-local]
+        WEB[web]
         BFF[bff-web / bff-mobile]
         API[APIs y publicadores outbox]
         PG[(PostgreSQL)]
         EMU[Emulador Pub/Sub]
       end
     end
+    NAV -- localhost:18082 --> WEB
+    NAV -- localhost:18080 --> BFF
     NG -- localhost:18080 --> BFF
     BFF --> API --> PG
     API --> EMU
@@ -130,7 +134,7 @@ Cada repositorio conserva lo que le pertenece:
 | Repositorio | Aporta | Lo consume Terraform así |
 | --- | --- | --- |
 | backend | código, imágenes y manifiestos `deploy/k8s/base` (Deployments, Services, Jobs de migración) | en local, compone esos manifiestos tal como estén en tu clon; en producción, despliega imágenes por digest |
-| frontend | código Angular (imagen pendiente) | en local corre con `ng serve`; en producción será el servicio `web` de Cloud Run |
+| frontend | código Angular, imagen `sportapp/web` y manifiestos `deploy/k8s/base` | en local, compone esos manifiestos desde el clon del frontend; en producción despliega la imagen por digest en Cloud Run |
 | plataforma | PostgreSQL, Pub/Sub, configuración, secretos e infraestructura GCP | — |
 
 ## 4. Desarrollo local paso a paso
@@ -185,7 +189,7 @@ terraform apply tfplan
 
 El primer `apply` tarda alrededor de un minuto. Crea:
 
-- el namespace `sportapp-local` y el Secret `sportapp-database`, con contraseñas generadas que no se guardan en el estado;
+- el namespace `sportapp-local`, el Secret `sportapp-database` con las contraseñas y el Secret `sportapp-users-jwt` con la clave Ed25519 de firma; esos valores se generan de forma efímera y no se guardan en el estado;
 - el ConfigMap `sportapp-runtime`, con la configuración de los componentes;
 - PostgreSQL con las bases y roles por dominio, y el emulador de Pub/Sub con sus tópicos;
 - los componentes del backend: APIs, publicadores outbox, BFF y Jobs de migración;
@@ -202,7 +206,7 @@ curl.exe http://localhost:18080/health/ready
 curl.exe http://localhost:18081/health/ready
 ```
 
-Resultado esperado: todos los pods en `Running`, todos los Jobs en `Complete` y `200` en ambos BFF.
+Resultado esperado: todos los pods en `Running`, todos los Jobs en `Complete` y `200` en ambos BFF. La aplicación web se abre en `http://localhost:18082` (`curl.exe http://localhost:18082/healthz` debe responder `200`).
 
 Para una prueba de punta a punta, registra un usuario sintético a través del BFF web:
 
@@ -217,6 +221,7 @@ Debe responder `201`. El evento `usuario.registrado.v1` queda en la suscripción
 
 | Acceso | Dirección |
 | --- | --- |
+| Aplicación web | `http://localhost:18082` |
 | BFF web | `http://localhost:18080` |
 | BFF móvil | `http://localhost:18081`; desde el emulador de Android, `http://10.0.2.2:18081` |
 | PostgreSQL | `localhost:15432`, roles `usuarios`, `afiliacion`, `servicios`, `entrenamientos` y `eventos` |
@@ -313,24 +318,18 @@ Terraform lee los manifiestos directamente del clon del backend, así que la pla
 
 ### 5.3 Frontend web
 
-El frontend aún no tiene imagen de contenedor. En desarrollo se ejecuta en el host con recarga automática, contra el BFF del clúster:
+El frontend corre en el clúster con la **misma imagen que en producción** (Cloud Run). Terraform compone sus manifiestos `deploy/k8s/base` desde el clon del frontend, igual que con el backend, y lo publica en `http://localhost:18082`.
 
-1. En `frontend/public/app-config.json` (copia local), apunta al BFF:
+Al arrancar, el contenedor genera su `app-config.json` a partir del ConfigMap `sportapp-runtime`: `APP_ENV=local`, `BFF_WEB_BASE_URL=http://localhost:18080` y `REGISTRATION_POLICIES_VERSION`. El BFF web acepta las llamadas del navegador porque el ConfigMap también define `CORS_ALLOWED_ORIGINS=http://localhost:18082,http://localhost:4200`.
 
-   ```json
-   { "environment": "local", "bffWebBaseUrl": "http://localhost:18080" }
-   ```
+**Actualizar el frontend** tras un cambio, en `aplicacion_proyecto_final\frontend`:
 
-2. Inicia el servidor de desarrollo:
+```powershell
+docker build -t sportapp/web:local .
+kubectl --context docker-desktop --namespace sportapp-local rollout restart deployment/web
+```
 
-   ```powershell
-   cd ..\frontend
-   npm start          # http://localhost:4200
-   ```
-
-3. **Pendiente:** el BFF web no tiene CORS configurado, así que el navegador bloqueará las llamadas de `localhost:4200` a `localhost:18080`. Hay dos soluciones: que el BFF permita el origen `http://localhost:4200` (repositorio backend), o que el frontend use un `proxy.conf.json` de `ng serve` y llame al BFF como `/v1/...` desde el mismo origen (repositorio frontend).
-
-Cuando el frontend tenga un `Dockerfile` y manifiestos propios (`deploy/k8s/base`), se agregará a esta composición igual que el backend.
+**Programar con recarga automática:** `npm start` sigue disponible en `http://localhost:4200` y usa `public/app-config.json`, que ya apunta a `http://localhost:18080`. Ese origen también está permitido por CORS. Si no quieres el contenedor web en el clúster, aplica con `-var="deploy_frontend=false"`.
 
 ### 5.4 Cambiar las dependencias compartidas
 
@@ -589,7 +588,7 @@ flowchart LR
 | Contenedor | Corre en | Lo despliega |
 | --- | --- | --- |
 | `bff-web`, `bff-mobile` | Cloud Run | Terraform (`cloud_run_images`) |
-| `web` (imagen pendiente) | Cloud Run | Terraform (`cloud_run_images`) |
+| `web` (imagen `sportapp/web`, `release-web.yml`) | Cloud Run | Terraform (`cloud_run_images`) |
 | APIs, publicadores outbox, proyectores y Jobs de migración | GKE | Kustomize con un overlay de producción (pendiente) |
 
 ### 8.2 Publicar la imagen
@@ -635,7 +634,20 @@ Los tags son inmutables: no se puede volver a publicar `v0.2.0` con otro conteni
 3. Cloud Run pasa el tráfico a la revisión nueva cuando `/health/ready` responde. Para revertir, restaura el digest anterior y aplica.
 4. Comprueba que `GET /version` reporte la versión del manifiesto.
 
-Para el frontend, el repositorio debe aportar una imagen que sirva `ng build` en el puerto 8080 y genere `app-config.json` al arrancar, con `bffWebBaseUrl` igual a la URL de `bff-web` (`terraform output cloud_run_urls`).
+El frontend se despliega igual, con dos variables que conectan web y BFF (las URL salen de `terraform output cloud_run_urls`):
+
+```hcl
+cloud_run_images = {
+  web = "us-central1-docker.pkg.dev/sportapp-prod-1234/sportapp/web@sha256:<digest>"
+}
+
+cloud_run_env = {
+  web     = { BFF_WEB_BASE_URL = "https://bff-web-xxxx.a.run.app", REGISTRATION_POLICIES_VERSION = "<versión vigente>" }
+  bff-web = { CORS_ALLOWED_ORIGINS = "https://web-xxxx.a.run.app" }
+}
+```
+
+La primera vez, crea primero los servicios para conocer sus URL y luego completa estas variables con un segundo `apply`.
 
 ### 8.4 Desplegar en GKE
 
@@ -682,8 +694,10 @@ cd ..\..\modules\gcp\platform;              terraform init -backend=false; terra
 | Pods en `ErrImagePull` o `ImagePullBackOff` | la imagen con ese tag no existe en Docker | construye con [4.2](#42-construir-las-imágenes-del-backend) usando el mismo tag |
 | El código nuevo no aparece | se reconstruyó con el mismo tag `local` | usa un tag nuevo ([5.1](#51-cambió-el-código-del-backend)) |
 | `apply` espera hasta 10 minutos y falla | un Deployment no llega a estar listo | revisa `kubectl … logs deployment/<componente>` |
+| `users-management` queda en `CreateContainerConfigError` por `sportapp-users-jwt` | se aplicó un plan anterior a la incorporación del Secret JWT | ejecuta `terraform init -upgrade`, crea un plan nuevo y aplícalo |
 | `bind: address already in use` en un acceso | otro programa usa 18080, 18081, 15432 o 18085 | libera el puerto o cámbialo en `access.yaml` |
-| El navegador bloquea las llamadas del frontend | el BFF no tiene CORS | ver [5.3](#53-frontend-web) |
+| El navegador bloquea las llamadas del frontend | el origen no está en `CORS_ALLOWED_ORIGINS` | agrégalo al ConfigMap en `environments/local/main.tf` (local) o a `cloud_run_env.bff-web` (producción) |
+| `apply` de un ambiente creado antes de las dos fases falla al mover Deployments | el estado guarda las cargas con la dirección anterior (`p1`) | `terraform destroy` y `apply`, o mover cada carga con `terraform state mv` a `kustomization_resource.p1_workloads` |
 | Error de autenticación en PostgreSQL después de cambiar `password_revision` | el rol conserva la contraseña de la primera inicialización | `terraform destroy` y `apply` |
 | `403 … getAccessToken` (producción) | tu usuario no está en `operators` | agrégalo y aplica el bootstrap |
 | `Error acquiring the state lock` (producción) | otro `apply` está en curso | espera; usa `terraform force-unlock` solo si nadie más está aplicando |
@@ -695,13 +709,11 @@ cd ..\..\modules\gcp\platform;              terraform init -backend=false; terra
 | Ambientes | desarrollo local en Docker Desktop y producción en GCP; staging no existe todavía |
 | Región de producción | `us-central1` |
 | GKE | Standard regional |
-| Cloud SQL | una instancia regional con bases y usuarios por dominio |
+| Cloud SQL | una instancia regional con bases y usuarios por dominio (decidido en ADR-023) |
 | Capa de borde | sin decidir: `web` y los BFF son públicos en Cloud Run y validan su propio JWT |
 
 Pendientes:
 
-- CORS en el BFF o proxy en `ng serve` para el frontend local ([5.3](#53-frontend-web));
-- imagen y manifiestos del frontend;
 - overlay Kubernetes de producción ([8.4](#84-desplegar-en-gke));
 - workflows de Terraform y adaptación de `deliver-development.yml` del backend a releases ([8.2](#82-publicar-la-imagen));
 - retirar del backend el overlay `deploy/k8s/overlays/local`, reemplazado por esta raíz, para que no haya dos fuentes del ambiente local;

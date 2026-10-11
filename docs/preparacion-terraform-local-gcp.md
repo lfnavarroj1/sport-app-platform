@@ -169,7 +169,7 @@ docker build -t sportapp/web:local .
 docker images "sportapp/*"      # 9 imágenes
 ```
 
-**Estado del frontend:** su `Dockerfile` y sus manifiestos `deploy/k8s/base` están solicitados al equipo frontend en la tarea `arquitectura/guias-desarrollo/andamiaje-inicial/08-tarea-agente-frontend-contenedor-y-kubernetes.md` de la documentación central. Su integración a la composición local de la plataforma queda pendiente hasta esa entrega. Mientras tanto, el frontend se ejecuta con `npm start` (guía de Terraform, sección 5.3) y el ambiente local trabaja con las 8 imágenes del backend.
+El ambiente local despliega el frontend en el clúster con la misma imagen que se publica para Cloud Run, y lo publica en `http://localhost:18082`. Para programar con recarga automática, `npm start` sigue disponible en `http://localhost:4200` (guía de Terraform, sección 5.3).
 
 ### 4.5 Archivo de variables local
 
@@ -187,9 +187,13 @@ notepad local.auto.tfvars
 | `backend_image_tag` | tag de las imágenes construidas | `local` |
 | `backend_image_tags` | tag por componente reconstruido | `{}` |
 | `deploy_backend` | `false` deja solo PostgreSQL y Pub/Sub | `true` |
+| `frontend_path` | ruta del repositorio frontend relativa a esta carpeta | `../../../../../frontend` |
+| `frontend_image_tag` | tag de `sportapp/web` | `local` |
+| `deploy_frontend` | `false` no despliega la web (por ejemplo, para usar solo `npm start`) | `true` |
 | `log_level` | nivel de log | `INFO` |
+| `jwt_key_revision` | versión de la clave local; increméntala solo para rotarla e invalidar sesiones | `1` |
 
-Las contraseñas de PostgreSQL las genera Terraform en el Secret `sportapp-database` y no se guardan en el estado.
+Las contraseñas de PostgreSQL y la clave Ed25519 de firma JWT las genera Terraform en los Secrets `sportapp-database` y `sportapp-users-jwt`. Se entregan mediante argumentos *write-only* y no se guardan en el plan ni en el estado.
 
 ### 4.6 Primer apply
 
@@ -199,10 +203,10 @@ terraform plan -out=tfplan
 terraform apply tfplan
 kubectl --context docker-desktop --namespace sportapp-local get pods
 curl.exe http://localhost:18080/health/ready
-curl.exe http://localhost:18082/healthz          # frontend, cuando esté integrado
+curl.exe http://localhost:18082/healthz          # aplicación web
 ```
 
-La plataforma local queda lista cuando todos los pods están en `Running`, los Jobs en `Complete` y el BFF responde `200`. Una vez integrado el frontend, la aplicación web se abre en `http://localhost:18082`. El uso diario continúa en la guía de Terraform (sección 4).
+La plataforma local queda lista cuando todos los pods están en `Running`, los Jobs en `Complete` y el BFF responde `200`. La aplicación web se abre en `http://localhost:18082`. El uso diario continúa en la guía de Terraform (sección 4).
 
 ### 4.7 Actualizar backend y frontend
 
@@ -249,7 +253,7 @@ El plan debe mostrar los Deployments como *update in-place* y los Jobs de migrac
 
 **Si cambiaron los manifiestos del backend** (`deploy/k8s/base`: un componente, una variable o un Job nuevos), basta con actualizar el clon del backend y ejecutar `terraform plan` y `terraform apply`. Terraform lee los manifiestos directamente del clon.
 
-**Frontend** (cuando esté integrado a la composición local). En `aplicacion_proyecto_final\frontend`:
+**Frontend.** En `aplicacion_proyecto_final\frontend`:
 
 ```powershell
 docker build -t sportapp/web:local .
@@ -445,10 +449,10 @@ El `.gitignore` de la plataforma ya cubre todos los casos. Antes de un commit, r
 - [ ] Kubernetes está en verde y fue creado con **kubeadm**.
 - [ ] `kubectl --context docker-desktop get nodes` muestra `Ready` y runtime `docker://`.
 - [ ] Las 8 imágenes del backend `sportapp/*` existen en `docker images`.
-- [ ] La imagen `sportapp/web:local` del frontend existe (cuando el frontend entregue su `Dockerfile`).
+- [ ] La imagen `sportapp/web:local` del frontend existe.
 - [ ] `terraform apply` en `environments/local` deja todos los pods en `Running`.
 - [ ] `http://localhost:18080/health/ready` responde `200`.
-- [ ] `http://localhost:18082/healthz` responde `200` (cuando el frontend esté integrado).
+- [ ] `http://localhost:18082/healthz` responde `200` y la web abre en el navegador.
 
 ### GCP
 

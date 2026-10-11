@@ -26,6 +26,14 @@ Una HU no produce automáticamente una release individual. Las HU aceptadas dura
 
 No se obliga a que los cuatro números coincidan. La plataforma cambia cuando cambia la combinación entregable; un componente cambia solo cuando su código o artefacto cambia.
 
+### Fuente normativa y ubicación del manifiesto
+
+La especificación arquitectónica completa y su impacto se mantienen en el repositorio oficial `documentacion`, principalmente en `arquitectura/decisiones/ADR-020-repositorio-integrador-y-versionado.md` y `arquitectura/integracion-continua/06-esquema-operativo-ci-y-release-integrado.md`. Este manual conserva únicamente el procedimiento operativo necesario para trabajar en la plataforma.
+
+El manifiesto no pertenece a `docs/`: el candidato vigente es [`release-manifest.yaml`](../release-manifest.yaml), su contrato validable es [`schemas/release-manifest.schema.json`](../schemas/release-manifest.schema.json) y las copias inmutables de versiones publicadas se guardan en `releases/vX.Y.Z.yaml`.
+
+Mientras no existan tags y artefactos publicados, el manifiesto permanece en `status: draft`: registra los commits exactos de los submódulos, pero permite versiones, referencias y artefactos vacíos. `status: released` exige versiones SemVer, tags, contratos, los ocho digests OCI del backend, el digest del frontend y el checksum del artefacto móvil.
+
 ## Versión de plataforma por sprint
 
 Mientras se construye el primer MVP se utiliza la serie `0.x`:
@@ -76,6 +84,17 @@ Para el Sprint 1, por ejemplo, la plataforma crea `release/v0.1.0` desde `develo
 ## Una HU como feature
 
 Cada historia usa el mismo identificador en GitHub Projects, ramas, commits, PR, pruebas y documentación.
+
+Una HU es una sola historia aunque participen varios repositorios. Su trabajo se reparte en tareas técnicas hijas, que no tienen PHU ni valor y no cierran la HU por separado:
+
+| Tarea | Repositorio | Cuándo existe |
+| --- | --- | --- |
+| `T-HUxxx-BE` | `sport-app-backend` | en las 40 HU (microservicio y BFF del canal) |
+| `T-HUxxx-WEB` | `sport-app-frontend` | HU001–HU025 |
+| `T-HUxxx-MOB` | `sport-app-movil` | HU026–HU040 y HU003 |
+| `T-HUxxx-PLAT` | `sport-app-platform` | solo si la HU requiere trabajo real en la plataforma |
+
+Las ramas y los commits usan el identificador de la **HU**, no el de la tarea.
 
 Patrón de rama:
 
@@ -173,30 +192,46 @@ Cada versión de plataforma registra como mínimo:
 ```yaml
 schemaVersion: 1
 platformVersion: 0.1.0
+status: released
 sprint: Sprint 1
 acceptedStories:
   - HU010
   - HU011
 components:
   backend:
+    repository: https://github.com/lfnavarroj1/sport-app-backend
     version: 0.2.0
     ref: v0.2.0
     commit: <sha-completo>
-    artifact: <digest-oci>
+    contractVersion: 1.0.0
+    artifacts:
+      users-management: <imagen-oci-por-digest>
+      affiliation-management: <imagen-oci-por-digest>
+      complementary-services: <imagen-oci-por-digest>
+      training-management: <imagen-oci-por-digest>
+      events-management: <imagen-oci-por-digest>
+      third-party-management: <imagen-oci-por-digest>
+      bff-web: <imagen-oci-por-digest>
+      bff-mobile: <imagen-oci-por-digest>
   frontend:
+    repository: https://github.com/lfnavarroj1/sport-app-frontend
     version: 0.1.0
     ref: v0.1.0
     commit: <sha-completo>
-    artifact: <digest-o-checksum>
+    expectedBffContract: 1.0.0
+    artifact:
+      uri: <imagen-oci-por-digest>
   mobile:
+    repository: https://github.com/lfnavarroj1/sport-app-movil
     version: 0.1.0
     versionCode: 1
     ref: v0.1.0
     commit: <sha-completo>
-    artifact: <checksum-apk-o-aab>
+    artifact:
+      sha256: <checksum-apk-o-aab>
 ```
 
-Una versión real no puede conservar marcadores `<...>` ni referencias a ramas móviles.
+Una versión real no puede conservar marcadores `<...>` ni referencias a ramas móviles. Todos los valores `imagen-oci-por-digest` deben usar la forma inmutable `registro/ruta@sha256:<64-hex>`.
 
 ## Historias incompletas o trasladadas
 
@@ -221,6 +256,8 @@ El componente afectado incrementa `PATCH`. La plataforma también incrementa `PA
 | Campo | Uso de versionado |
 | --- | --- |
 | HU | identificador estable |
+| Tipo | `Historia` o `Tarea BE`/`WEB`/`MOB`/`PLAT`; PHU y valor solo en `Historia` |
+| Parent issue | HU padre de cada tarea (sub-issue nativa) |
 | Sprint | versión objetivo de plataforma |
 | Estado | progreso y aceptación |
 | PHU | velocidad al aceptar |
@@ -230,7 +267,7 @@ El componente afectado incrementa `PATCH`. La plataforma también incrementa `PA
 | Versión entregada | tag real de plataforma |
 | Evidencia | CI, demo, artefacto y aceptación |
 
-Las tareas técnicas se crean en el repositorio propietario y se enlazan como sub-issues de la HU o del ítem transversal. El backlog funcional principal se administra desde el proyecto asociado a `sport-app-platform`.
+Las tareas técnicas `T-HUxxx-*` se crean en el repositorio propietario **justo a tiempo**, al preparar o iniciar la HU, y se enlazan como sub-issues de la HU (relación nativa `Parent issue`, campo `Tipo` y campo `HU`); no se crean anticipadamente. Ramas, PR, CI, contratos y evidencia quedan enlazados bajo la HU padre. El backlog funcional principal (40 HU, 100 PHU y 100 puntos de valor) se administra desde el proyecto asociado a `sport-app-platform`.
 
 ## Notas de release
 

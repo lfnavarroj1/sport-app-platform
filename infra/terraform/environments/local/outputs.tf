@@ -6,6 +6,7 @@ output "namespace" {
 output "endpoints" {
   description = "Accesos desde el equipo (Service LoadBalancer de Docker Desktop)."
   value = {
+    web             = "http://localhost:18082"
     bff_web         = "http://localhost:18080"
     bff_mobile      = "http://localhost:18081"
     bff_mobile_avd  = "http://10.0.2.2:18081" # desde el emulador de Android

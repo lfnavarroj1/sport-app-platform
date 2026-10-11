@@ -2,8 +2,8 @@
 #
 # La plataforma aporta el namespace, el Secret con contraseñas generadas, la
 # configuración y las dependencias compartidas (infra/kubernetes/local:
-# PostgreSQL, emulador de Pub/Sub y sus tópicos). El backend aporta sus propios
-# manifiestos (deploy/k8s/base); Kustomize los compone y Terraform los aplica.
+# PostgreSQL, emulador de Pub/Sub y sus tópicos). Backend y frontend aportan sus
+# propios manifiestos (deploy/k8s/base); Kustomize los compone y Terraform los aplica.
 
 locals {
   namespace = "sportapp-local"
@@ -30,8 +30,9 @@ locals {
   ]
 
   # Kustomize exige rutas relativas a esta carpeta.
-  shared_manifests  = "../../../kubernetes/local"
-  backend_manifests = "${var.backend_path}/deploy/k8s/base"
+  shared_manifests   = "../../../kubernetes/local"
+  backend_manifests  = "${var.backend_path}/deploy/k8s/base"
+  frontend_manifests = "${var.frontend_path}/deploy/k8s/base"
 }
 
 resource "kubernetes_namespace_v1" "sportapp" {
@@ -62,11 +63,35 @@ resource "kubernetes_secret_v1" "database" {
   data_wo_revision = var.password_revision
 }
 
+# Clave Ed25519 desechable para firmar access tokens. Terraform la entrega al
+# API de Kubernetes mediante el argumento write-only y nunca la guarda en el
+# plan ni en el estado. El Secret conserva la clave entre reinicios de pods.
+ephemeral "tls_private_key" "users_jwt" {
+  algorithm = "ED25519"
+}
+
+resource "kubernetes_secret_v1" "users_jwt" {
+  metadata {
+    name      = "sportapp-users-jwt"
+    namespace = kubernetes_namespace_v1.sportapp.metadata[0].name
+    labels = {
+      "app.kubernetes.io/part-of"    = "sportapp"
+      "app.kubernetes.io/managed-by" = "terraform"
+    }
+  }
+
+  data_wo = {
+    JWT_PRIVATE_KEY = ephemeral.tls_private_key.users_jwt.private_key_pem
+  }
+  data_wo_revision = var.jwt_key_revision
+}
+
 data "kustomization_overlay" "sportapp" {
   namespace = local.namespace
   resources = concat(
     [local.shared_manifests],
     var.deploy_backend ? [local.backend_manifests] : [],
+    var.deploy_frontend ? [local.frontend_manifests] : [],
   )
 
   config_map_generator {
@@ -79,6 +104,10 @@ data "kustomization_overlay" "sportapp" {
       "USERS_MANAGEMENT_BASE_URL=http://users-management",
       "PUBSUB_PROJECT_ID=sportapp-local",
       "PUBSUB_EMULATOR_HOST=pubsub-emulator:8085",
+      # El navegador llama al BFF por el acceso bff-web-local.
+      "BFF_WEB_BASE_URL=http://localhost:18080",
+      # Orígenes que el BFF web acepta por CORS: la web en el clúster y npm start.
+      "CORS_ALLOWED_ORIGINS=http://localhost:18082,http://localhost:4200",
     ]
   }
 
@@ -90,7 +119,12 @@ data "kustomization_overlay" "sportapp" {
     }
   }
 
-  # Los manifiestos del backend están fuera de este repositorio.
+  images {
+    name    = "sportapp/web"
+    new_tag = var.frontend_image_tag
+  }
+
+  # Los manifiestos de backend y frontend están fuera de este repositorio.
   kustomize_options {
     load_restrictor = "none"
   }
@@ -100,11 +134,24 @@ data "kustomization_overlay" "sportapp" {
       condition     = !var.deploy_backend || fileexists("${local.backend_manifests}/kustomization.yaml")
       error_message = "No se encontró deploy/k8s/base del backend. Ajuste backend_path o use deploy_backend = false."
     }
+    precondition {
+      condition     = !var.deploy_frontend || fileexists("${local.frontend_manifests}/kustomization.yaml")
+      error_message = "No se encontró deploy/k8s/base del frontend. Ajuste frontend_path o use deploy_frontend = false."
+    }
   }
 }
 
 # Orden recomendado por el proveedor: prioridad 0 (namespaces, CRD), 1 (resto)
-# y 2 (webhooks).
+# y 2 (webhooks). La prioridad 1 se divide en dos fases: primero configuración y
+# Services, después las cargas (Deployments, StatefulSets y Jobs). Si van juntas,
+# las cargas que esperan su rollout pueden ocupar todos los cupos de paralelismo
+# de Terraform y dejar en cola el ConfigMap que necesitan para arrancar.
+locals {
+  ids_p1          = data.kustomization_overlay.sportapp.ids_prio[1]
+  ids_p1_workload = toset([for id in local.ids_p1 : id if can(regex("^(apps|batch)/", id))])
+  ids_p1_config   = setsubtract(local.ids_p1, local.ids_p1_workload)
+}
+
 resource "kustomization_resource" "p0" {
   for_each = data.kustomization_overlay.sportapp.ids_prio[0]
 
@@ -114,7 +161,18 @@ resource "kustomization_resource" "p0" {
 }
 
 resource "kustomization_resource" "p1" {
-  for_each = data.kustomization_overlay.sportapp.ids_prio[1]
+  for_each = local.ids_p1_config
+
+  manifest = data.kustomization_overlay.sportapp.manifests[each.value]
+
+  depends_on = [
+    kustomization_resource.p0,
+    kubernetes_secret_v1.users_jwt,
+  ]
+}
+
+resource "kustomization_resource" "p1_workloads" {
+  for_each = local.ids_p1_workload
 
   manifest = data.kustomization_overlay.sportapp.manifests[each.value]
   wait     = var.wait_for_rollout
@@ -124,7 +182,7 @@ resource "kustomization_resource" "p1" {
     update = "10m"
   }
 
-  depends_on = [kustomization_resource.p0]
+  depends_on = [kustomization_resource.p1]
 }
 
 resource "kustomization_resource" "p2" {
@@ -132,5 +190,5 @@ resource "kustomization_resource" "p2" {
 
   manifest = data.kustomization_overlay.sportapp.manifests[each.value]
 
-  depends_on = [kustomization_resource.p1]
+  depends_on = [kustomization_resource.p1_workloads]
 }

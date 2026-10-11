@@ -4,6 +4,19 @@
 apiVersion: v1
 kind: Service
 metadata:
+  name: web-local
+  labels:
+    app.kubernetes.io/component: local-access
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: web
+  ports:
+    - {name: http, port: 18082, targetPort: http}
+---
+apiVersion: v1
+kind: Service
+metadata:
   name: bff-web-local
   labels:
     app.kubernetes.io/component: local-access

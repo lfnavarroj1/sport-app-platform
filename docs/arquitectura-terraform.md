@@ -98,25 +98,51 @@ Cada carpeta de `environments/` es una raíz independiente. Los ambientes no se 
 
 ## Desarrollo local
 
-El ambiente de desarrollo valida la integración sin conectarse a GCP. Terraform compone en el Kubernetes de Docker Desktop aprovisionado con kubeadm (contexto `docker-desktop`, namespace `sportapp-local`) las dependencias que mantiene la plataforma —PostgreSQL, emulador de Pub/Sub y sus tópicos— con los manifiestos `deploy/k8s/base` del backend. Mientras no tenga imagen, el frontend se ejecuta en el host con `ng serve`.
+El ambiente de desarrollo valida la integración sin conectarse a GCP. Terraform compone en el Kubernetes de Docker Desktop aprovisionado con kubeadm (contexto `docker-desktop`, namespace `sportapp-local`) las dependencias que mantiene la plataforma —PostgreSQL, emulador de Pub/Sub y sus tópicos— con los manifiestos `deploy/k8s/base` del backend y del frontend. La web corre en el clúster con la misma imagen que en Cloud Run y se publica en `localhost:18082`.
 
 ```mermaid
 flowchart LR
     DEV[Desarrollador o CI] --> TF[Terraform local]
-    subgraph K8S[Kubernetes local]
-      WEB[Frontend]
-      BFF[BFF]
-      API[Microservicios]
-      DB[(PostgreSQL)]
+    NAV[Navegador] -- localhost:18082 --> WEB
+
+    subgraph K8S[Kubernetes kubeadm · sportapp-local]
+      WEB[web]
+      BFW[BFF web]
+      BFM[BFF móvil]
+      USR[users-management]
+      UOUT[publicador outbox usuarios]
+      AFI[affiliation-management]
+      SER[complementary-services]
+      ENT[training-management]
+      EVE[events-management]
+      TER[third-party-management]
       PS[Emulador Pub/Sub]
+
+      subgraph PG[PostgreSQL: una instancia, un rol por dominio]
+        uw[(usuarios_write)]
+        ur[(usuarios_read)]
+        af[(afiliacion)]
+        sv[(servicios)]
+        tw[(entrenamientos_write)]
+        tr[(entrenamientos_read)]
+        ew[(eventos_write)]
+        er[(eventos_read)]
+      end
     end
-    TF --> WEB
-    TF --> BFF
-    TF --> API
-    TF --> DB
-    TF --> PS
-    WEB --> BFF --> API --> DB
-    API <--> PS
+
+    TF --> K8S
+    WEB --> BFW --> USR
+    BFM --> USR
+    USR --> uw
+    USR --> ur
+    UOUT --> uw
+    UOUT --> PS
+    AFI --> af
+    SER --> sv
+    ENT --> tw
+    ENT --> tr
+    EVE --> ew
+    EVE --> er
 ```
 
 El estado local es desechable y se excluye de Git. Este ambiente prueba composición, conectividad, migraciones, outbox, eventos y flujos E2E; no pretende reproducir IAM, cuotas, alta disponibilidad ni comportamiento regional de GCP.
@@ -134,7 +160,16 @@ flowchart TB
       AR[Artifact Registry]
       RUN[Cloud Run]
       GKE[GKE]
-      SQL[(Cloud SQL)]
+      subgraph SQL[Cloud SQL: una instancia regional HA, un usuario por dominio]
+        uw[(usuarios_write)]
+        ur[(usuarios_read)]
+        af[(afiliacion)]
+        sv[(servicios)]
+        tw[(entrenamientos_write)]
+        tr[(entrenamientos_read)]
+        ew[(eventos_write)]
+        er[(eventos_read)]
+      end
       PS[Pub/Sub]
       SM[Secret Manager]
       OBS[Logging y Monitoring]
@@ -152,7 +187,24 @@ flowchart TB
     TF --> OBS
     AR -. imágenes por digest .-> RUN
     AR -. imágenes por digest .-> GKE
+    GKE -. cada dominio solo su base .-> SQL
 ```
+
+### Bases de datos: lógicas por dominio, una instancia física
+
+Cada microservicio tiene **sus propias bases** y su propio usuario, igual que en la [vista de despliegue de la arquitectura](https://github.com/lfnavarroj1/sport-app-platform/wiki). Lo que se comparte es la **instancia** (el servidor PostgreSQL) que las aloja:
+
+| Dominio | Bases | Usuario | Contraseña (local / producción) |
+| --- | --- | --- | --- |
+| Usuarios | `usuarios_write`, `usuarios_read` | `usuarios` | `USUARIOS_DB_PASSWORD` / `db-password-usuarios` |
+| Afiliación | `afiliacion` | `afiliacion` | `AFILIACION_DB_PASSWORD` / `db-password-afiliacion` |
+| Servicios | `servicios` | `servicios` | `SERVICIOS_DB_PASSWORD` / `db-password-servicios` |
+| Entrenamientos | `entrenamientos_write`, `entrenamientos_read` | `entrenamientos` | `ENTRENAMIENTOS_DB_PASSWORD` / `db-password-entrenamientos` |
+| Eventos | `eventos_write`, `eventos_read` | `eventos` | `EVENTOS_DB_PASSWORD` / `db-password-eventos` |
+
+Ningún servicio recibe la contraseña de otro dominio: cada carga solo lee el secreto del suyo. En local, cada rol es dueño de sus bases y se revoca el acceso público a ellas. En Cloud SQL, los usuarios creados pertenecen a `cloudsqlsuperuser`, así que restringir cada usuario a sus bases con `GRANT`/`REVOKE` sigue pendiente.
+
+La topología física está decidida en ADR-023 de la documentación de arquitectura: una instancia por ambiente, por costo. según la estimación de costos de producción, la instancia consolidada ronda los USD 305 al mes, mientras que una instancia HA por cada uno de los cinco dominios lleva el costo mensual total a USD 3.200–3.800. Pasar a instancias separadas es un cambio del módulo `cloud-sql` y de los secretos, sin cambiar los nombres de bases ni de usuarios.
 
 | Raíz | Estado | Forma de aplicación |
 | --- | --- | --- |

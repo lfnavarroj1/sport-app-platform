@@ -12,16 +12,37 @@ El repositorio público `sport-app-platform` está asociado exclusivamente al [P
 
 La propiedad de los ítems será:
 
-| Tipo de trabajo | Repositorio del issue | Presencia en Project |
-| --- | --- | --- |
-| HU y épica transversal | `sport-app-platform` | obligatoria |
-| Tarea backend | `sport-app-backend` | enlazada con su HU |
-| Tarea web | `sport-app-frontend` | enlazada con su HU |
-| Tarea móvil | `sport-app-movil` | enlazada con su HU |
-| Infraestructura compartida | `sport-app-platform` | enlazada con HU, release o deuda técnica |
-| Documentación de wiki o release | `sport-app-platform` | cuando forme parte del sprint |
+| Tipo de trabajo | Identificador | Repositorio del issue | Presencia en Project |
+| --- | --- | --- | --- |
+| Historia de usuario | `HUxxx` | `sport-app-platform` | obligatoria; elemento padre con PHU y valor |
+| Tarea backend (microservicio y BFF) | `T-HUxxx-BE` | `sport-app-backend` | enlazada con su HU, justo a tiempo |
+| Tarea web | `T-HUxxx-WEB` | `sport-app-frontend` | enlazada con su HU, justo a tiempo |
+| Tarea móvil | `T-HUxxx-MOB` | `sport-app-movil` | enlazada con su HU, justo a tiempo |
+| Tarea de plataforma | `T-HUxxx-PLAT` | `sport-app-platform` | solo cuando la HU requiere trabajo real en la plataforma |
+| Trabajo transversal | `TEC-xxx` | repositorio propietario | enlazado con HU, release o deuda técnica |
+| Documentación de wiki o release | — | `sport-app-platform` | cuando forme parte del sprint |
 
-Una HU no se duplica en los tres repositorios. El issue central representa el valor; las tareas técnicas y PR de componentes aportan la evidencia.
+Una HU no se duplica en los repositorios. El issue central representa el valor; las tareas técnicas y los PR de componentes aportan la evidencia.
+
+## Historias y tareas técnicas
+
+La regla canónica está en el modelo de descomposición y entrega de la documentación central (`documentacion/arquitectura/guias-desarrollo/modelo-descomposicion-y-entrega.md`). En este repositorio se aplica así:
+
+- El backlog conserva exactamente **40 HU (HU001–HU040), 100 PHU y 100 puntos de valor**. Cada HU aparece una sola vez, aunque participen varios repositorios.
+- Las responsabilidades técnicas son tareas hijas: `T-HUxxx-BE`, `T-HUxxx-WEB`, `T-HUxxx-MOB` y, solo cuando aplique, `T-HUxxx-PLAT`. No son historias: no tienen PHU ni puntos de valor y ninguna puede cerrar la HU por separado.
+- Tareas obligatorias por canal:
+
+  | HU | Tareas | Total |
+  | --- | --- | ---: |
+  | HU001–HU025, salvo HU003 | `T-HUxxx-BE` + `T-HUxxx-WEB` | 48 |
+  | HU003 | `T-HU003-BE` + `T-HU003-WEB` + `T-HU003-MOB` | 3 |
+  | HU026–HU040 | `T-HUxxx-BE` + `T-HUxxx-MOB` | 30 |
+  | **Total** | 40 BE + 25 WEB + 16 MOB | **81** |
+
+- Las tareas se crean en el Project **justo a tiempo**: al preparar o iniciar la HU, asignar un componente o seguir un bloqueo. No se crean las 81 tarjetas por anticipado.
+- Ramas, commits, PR, ejecuciones de CI, versiones de contrato y evidencia se enlazan bajo la **HU padre**; cada tarea aporta los suyos y la HU conserva la evidencia conjunta.
+- Solo una HU `Aceptada` suma velocidad, throughput y valor entregado. El avance de una tarea orienta el porcentaje de flujo de la HU, pero no entrega una fracción de PHU ni de valor.
+- Backend, frontend y móvil conservan su versionado independiente; la plataforma registra qué versiones son compatibles.
 
 ## Campos requeridos
 
@@ -31,9 +52,12 @@ Una HU no se duplica en los tres repositorios. El issue central representa el va
 | Sprint | Selección | Sprint 1, Sprint 2, Sprint 3 o Sin asignar |
 | Inicio del sprint | Fecha | inicio de la ventana temporal asignada |
 | Fin del sprint | Fecha | cierre de la ventana temporal asignada |
-| PHU | Número | estimación estable de la HU |
-| Valor | Número | prioridad/valor de negocio |
+| PHU | Número | estimación estable; solo en HU, nunca en tareas ni PR |
+| Valor | Número | valor de negocio; solo en HU, nunca en tareas ni PR |
 | Tipo de elemento | Selección | Historia de usuario, pull request o actividad técnica; evita mezclar métricas funcionales y técnicas |
+| Tipo | Selección | `Historia`, `Tarea BE`, `Tarea WEB`, `Tarea MOB`, `Tarea PLAT` o `Técnica transversal` |
+| HU | Texto | identificador `HUxxx`; vacío para trabajo transversal sin HU |
+| Historia padre | Relación `Parent issue` (nativa) | cada tarea es sub-issue de su HU en `sport-app-platform`, el único elemento que conserva PHU, valor y aceptación; el campo `HU` repite el identificador |
 | Avance verificable (%) | Número | indicador de flujo: Backlog 0, Preparada 10, En curso 50, En revisión 80, Aceptada 100 |
 | Ciclo | Selección | Reimplementación 2026; otros ciclos se agregarán solo cuando existan |
 | Repositorios afectados | Selección múltiple o etiquetas | backend, frontend, móvil, plataforma |
@@ -72,4 +96,4 @@ Una HU no se duplica en los tres repositorios. El issue central representa el va
 - Los PR y actividades técnicas pueden mostrar avance, pero no reciben PHU ni puntos de valor; esas métricas pertenecen exclusivamente a la HU aceptada.
 - Todas las HU deben tener responsable. Un cambio de responsable se registra en el issue, no solo en una vista.
 - Cada HU aceptada debe indicar la versión de plataforma donde fue entregada.
-- Cada sprint aceptado debe corresponder con una release según el [manual de versiones](../documentacion/docs/manual-versionado.md).
+- Cada sprint aceptado debe corresponder con una release según el [manual de versiones](../docs/manual-versionado.md).

@@ -10,7 +10,7 @@ Cada repositorio construye su artefacto una sola vez. La plataforma registra y p
 
 ## Situación actual
 
-Al 10 de octubre de 2026 el backend ya ejecuta CI remota en push y pull request. La plataforma contiene Terraform para desarrollo local y producción, pero todavía no contiene los workflows de release coordinada ni un manifiesto ejecutable. Frontend y móvil conservan pendientes según sus registros.
+Al 11 de octubre de 2026 el backend ya ejecuta CI remota en push y pull request. La plataforma contiene Terraform para desarrollo local y producción, además de un `release-manifest.yaml` candidato y su JSON Schema. El manifiesto permanece en `status: draft` porque los componentes fijados aún no tienen tags y artefactos de release registrados. Todavía no existen los workflows de release coordinada; frontend y móvil conservan pendientes según sus registros.
 
 Por lo tanto, este es el procedimiento acordado para implementar; todavía no representa un release ejecutable en GitHub Actions.
 
@@ -71,24 +71,38 @@ Este comando funcionará cuando el workflow sea implementado. Su ejecución debe
 
 El manifiesto registra números independientes y prueba qué versiones funcionan juntas:
 
+- el archivo operativo está en [`../release-manifest.yaml`](../release-manifest.yaml), fuera de `docs/`;
+- el esquema está en [`../schemas/release-manifest.schema.json`](../schemas/release-manifest.schema.json);
+- `draft` representa una composición todavía no publicable y `released` activa las restricciones completas;
+- al etiquetar la plataforma se conserva una copia inmutable en `releases/vX.Y.Z.yaml`.
+
 ```yaml
+schemaVersion: 1
 platformVersion: 0.1.0
+status: released
+sprint: Sprint 1
+acceptedStories: [HU010, HU011]
 components:
   backend:
+    repository: https://github.com/lfnavarroj1/sport-app-backend
     version: 0.2.0
     ref: v0.2.0
     commit: <sha-completo>
+    contractVersion: 1.0.0
     artifacts:
       bff-web: <imagen-por-digest>
       users-management: <imagen-por-digest>
   frontend:
+    repository: https://github.com/lfnavarroj1/sport-app-frontend
     version: 0.1.0
     ref: v0.1.0
     commit: <sha-completo>
-    artifact: <imagen-por-digest-o-checksum>
+    expectedBffContract: 1.0.0
+    artifact:
+      uri: <imagen-por-digest>
 ```
 
-En una release real no se permiten marcadores. Backend y frontend no necesitan compartir el mismo número; deben coincidir en el contrato declarado y en la combinación aprobada por la plataforma.
+El fragmento es ilustrativo; [`schemas/release-manifest.schema.json`](../schemas/release-manifest.schema.json) es el contrato completo y exige también los demás artefactos backend y el componente móvil. En una release real no se permiten marcadores. Backend y frontend no necesitan compartir el mismo número; deben coincidir en el contrato declarado y en la combinación aprobada por la plataforma.
 
 ## Verificación de las versiones desplegadas
 
@@ -119,7 +133,7 @@ Contrato:   v1.0.0 · compatible
 1. normalizar `master` a `main` o ajustar conscientemente los triggers;
 2. crear y proteger `develop` y `main`;
 3. confirmar y publicar el código y los workflows locales;
-4. crear el esquema y validador de `release-manifest.yaml`;
+4. integrar la validación del esquema y la coincidencia de submódulos en CI;
 5. configurar GitHub Environments y OIDC/WIF;
 6. definir Artifact Registry y destino de producción; staging se define aparte si el riesgo lo exige;
 7. implementar `version.json`, `GET /version` y el verificador posterior al despliegue.

@@ -1,0 +1,366 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lfnavarroj1/sport-app-platform/raw/main/schemas/release-manifest.schema.json",
+  "title": "SportApp release manifest",
+  "description": "Composición reproducible de una versión de sport-app-platform.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "platformVersion",
+    "status",
+    "sprint",
+    "acceptedStories",
+    "components"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "platformVersion": {
+      "$ref": "#/$defs/semver"
+    },
+    "status": {
+      "enum": ["draft", "released"]
+    },
+    "sprint": {
+      "type": "string",
+      "minLength": 1
+    },
+    "acceptedStories": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^HU[0-9]{3}$"
+      }
+    },
+    "components": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["backend", "frontend", "mobile"],
+      "properties": {
+        "backend": {
+          "$ref": "#/$defs/backend"
+        },
+        "frontend": {
+          "$ref": "#/$defs/frontend"
+        },
+        "mobile": {
+          "$ref": "#/$defs/mobile"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "released"
+          }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "acceptedStories": {
+            "minItems": 1
+          },
+          "components": {
+            "properties": {
+              "backend": {
+                "$ref": "#/$defs/releasedBackend"
+              },
+              "frontend": {
+                "$ref": "#/$defs/releasedFrontend"
+              },
+              "mobile": {
+                "$ref": "#/$defs/releasedMobile"
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    },
+    "nullableSemver": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/semver"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "releaseRef": {
+      "type": "string",
+      "pattern": "^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    },
+    "nullableReleaseRef": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/releaseRef"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "imageDigest": {
+      "type": "string",
+      "pattern": "^[^\\s@]+@sha256:[0-9a-f]{64}$"
+    },
+    "backendArtifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "users-management": {
+          "$ref": "#/$defs/imageDigest"
+        },
+        "affiliation-management": {
+          "$ref": "#/$defs/imageDigest"
+        },
+        "complementary-services": {
+          "$ref": "#/$defs/imageDigest"
+        },
+        "training-management": {
+          "$ref": "#/$defs/imageDigest"
+        },
+        "events-management": {
+          "$ref": "#/$defs/imageDigest"
+        },
+        "third-party-management": {
+          "$ref": "#/$defs/imageDigest"
+        },
+        "bff-web": {
+          "$ref": "#/$defs/imageDigest"
+        },
+        "bff-mobile": {
+          "$ref": "#/$defs/imageDigest"
+        }
+      }
+    },
+    "frontendArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["uri"],
+      "properties": {
+        "uri": {
+          "$ref": "#/$defs/imageDigest"
+        }
+      }
+    },
+    "mobileArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256"],
+      "properties": {
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "backend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "version",
+        "ref",
+        "commit",
+        "contractVersion",
+        "artifacts"
+      ],
+      "properties": {
+        "repository": {
+          "const": "https://github.com/lfnavarroj1/sport-app-backend"
+        },
+        "version": {
+          "$ref": "#/$defs/nullableSemver"
+        },
+        "ref": {
+          "$ref": "#/$defs/nullableReleaseRef"
+        },
+        "commit": {
+          "$ref": "#/$defs/commit"
+        },
+        "contractVersion": {
+          "$ref": "#/$defs/nullableSemver"
+        },
+        "artifacts": {
+          "$ref": "#/$defs/backendArtifacts"
+        }
+      }
+    },
+    "frontend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "version",
+        "ref",
+        "commit",
+        "expectedBffContract",
+        "artifact"
+      ],
+      "properties": {
+        "repository": {
+          "const": "https://github.com/lfnavarroj1/sport-app-frontend"
+        },
+        "version": {
+          "$ref": "#/$defs/nullableSemver"
+        },
+        "ref": {
+          "$ref": "#/$defs/nullableReleaseRef"
+        },
+        "commit": {
+          "$ref": "#/$defs/commit"
+        },
+        "expectedBffContract": {
+          "$ref": "#/$defs/nullableSemver"
+        },
+        "artifact": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/frontendArtifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "mobile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "version",
+        "versionCode",
+        "ref",
+        "commit",
+        "artifact"
+      ],
+      "properties": {
+        "repository": {
+          "const": "https://github.com/lfnavarroj1/sport-app-movil"
+        },
+        "version": {
+          "$ref": "#/$defs/nullableSemver"
+        },
+        "versionCode": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "ref": {
+          "$ref": "#/$defs/nullableReleaseRef"
+        },
+        "commit": {
+          "$ref": "#/$defs/commit"
+        },
+        "artifact": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/mobileArtifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "releasedBackend": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/backend"
+        },
+        {
+          "properties": {
+            "version": {
+              "$ref": "#/$defs/semver"
+            },
+            "ref": {
+              "$ref": "#/$defs/releaseRef"
+            },
+            "contractVersion": {
+              "$ref": "#/$defs/semver"
+            },
+            "artifacts": {
+              "required": [
+                "users-management",
+                "affiliation-management",
+                "complementary-services",
+                "training-management",
+                "events-management",
+                "third-party-management",
+                "bff-web",
+                "bff-mobile"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "releasedFrontend": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/frontend"
+        },
+        {
+          "properties": {
+            "version": {
+              "$ref": "#/$defs/semver"
+            },
+            "ref": {
+              "$ref": "#/$defs/releaseRef"
+            },
+            "expectedBffContract": {
+              "$ref": "#/$defs/semver"
+            },
+            "artifact": {
+              "$ref": "#/$defs/frontendArtifact"
+            }
+          }
+        }
+      ]
+    },
+    "releasedMobile": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/mobile"
+        },
+        {
+          "properties": {
+            "version": {
+              "$ref": "#/$defs/semver"
+            },
+            "versionCode": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "ref": {
+              "$ref": "#/$defs/releaseRef"
+            },
+            "artifact": {
+              "$ref": "#/$defs/mobileArtifact"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -22,4 +22,18 @@ backend_image_tags = {
 # false: solo PostgreSQL y Pub/Sub, para ejecutar un componente en el host.
 deploy_backend = true
 
+# Carpeta del repositorio frontend, relativa a esta carpeta.
+#   clon hermano (por defecto): "../../../../../frontend"
+#   submódulo de integración:   "../../../../components/frontend"
+frontend_path = "../../../../../frontend"
+
+# Tag de sportapp/web (docker build -t sportapp/web:<tag> . en el frontend).
+frontend_image_tag = "local"
+
+# false: no despliega la web en el clúster (por ejemplo, para usar npm start).
+deploy_frontend = true
+
 log_level = "INFO"
+
+# Incrementar invalida las sesiones locales y genera una nueva clave de firma.
+jwt_key_revision = 1
