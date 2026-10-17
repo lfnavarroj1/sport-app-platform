@@ -43,30 +43,63 @@ locals {
       }
       pubsub_max_delivery_attempts = null
     }
-    eventos = { databases = ["eventos_write", "eventos_read"], cqrs = true, pubsub_names = null, pubsub_max_delivery_attempts = null }
+    eventos = {
+      databases = ["eventos_write", "eventos_read"]
+      cqrs      = true
+      # CMP-004: nombres que consume events-management-read-projector.
+      pubsub_names = {
+        projector_subscription = "proyector-eventos-v1"
+        dead_letter_topic      = "sportapp.eventos.proyeccion.dlq"
+      }
+      pubsub_max_delivery_attempts = null
+    }
   }
 
-  # Afiliación no es CQRS (ADR-024): consume usuario.registrado.v1 del tópico de
-  # Usuarios y publica suscripcion.activada.v1 en su tópico de integración. Este
-  # tópico no tiene suscripción mientras no exista un consumidor aprobado.
-  affiliation_topic = "sportapp.afiliacion.v1"
+  # Tópicos de integración de dominios no CQRS: solo su publicador outbox
+  # publica y no tienen suscripción mientras no exista un consumidor aprobado.
+  # Afiliación (ADR-024) también consume usuario.registrado.v1 de Usuarios.
+  integration_topics = {
+    afiliacion = "sportapp.afiliacion.v1"
+    servicios  = "sportapp.servicios.v1"
+  }
 
-  # Cargas de GKE. ksa coincide con el nombre del Deployment en backend/deploy/k8s.
+  # Cargas de GKE. ksa coincide con el nombre del Deployment en backend/deploy/k8s;
+  # las migraciones de cada dominio comparten la KSA <servicio>-migrate.
   gke_workloads = {
     users-api            = { ksa = "users-management", domain = "usuarios", kind = "api" }
     users-outbox         = { ksa = "users-management-outbox-publisher", domain = "usuarios", kind = "outbox" }
     users-projector      = { ksa = "users-management-read-projector", domain = "usuarios", kind = "projector" }
+    users-migrate        = { ksa = "users-management-migrate", domain = "usuarios", kind = "migration" }
     affiliation-api      = { ksa = "affiliation-management", domain = "afiliacion", kind = "api" }
     affiliation-consumer = { ksa = "affiliation-management-free-plan-consumer", domain = "afiliacion", kind = "consumer" }
     affiliation-outbox   = { ksa = "affiliation-management-outbox-publisher", domain = "afiliacion", kind = "outbox" }
+    affiliation-migrate  = { ksa = "affiliation-management-migrate", domain = "afiliacion", kind = "migration" }
     services-api         = { ksa = "complementary-services", domain = "servicios", kind = "api" }
+    services-outbox      = { ksa = "complementary-services-outbox-publisher", domain = "servicios", kind = "outbox" }
+    services-migrate     = { ksa = "complementary-services-migrate", domain = "servicios", kind = "migration" }
     training-api         = { ksa = "training-management", domain = "entrenamientos", kind = "api" }
     training-outbox      = { ksa = "training-management-outbox-publisher", domain = "entrenamientos", kind = "outbox" }
     training-projector   = { ksa = "training-management-read-projector", domain = "entrenamientos", kind = "projector" }
+    training-migrate     = { ksa = "training-management-migrate", domain = "entrenamientos", kind = "migration" }
     events-api           = { ksa = "events-management", domain = "eventos", kind = "api" }
     events-outbox        = { ksa = "events-management-outbox-publisher", domain = "eventos", kind = "outbox" }
     events-projector     = { ksa = "events-management-read-projector", domain = "eventos", kind = "projector" }
+    events-migrate       = { ksa = "events-management-migrate", domain = "eventos", kind = "migration" }
     third-party          = { ksa = "third-party-management", domain = null, kind = "api" }
+  }
+
+  # APIs de GKE que llaman los BFF de Cloud Run, por la variable que las nombra.
+  # Cada una se expone con un balanceador interno en una IP fija reservada aquí.
+  gke_internal_apis = {
+    users-management       = "USERS_MANAGEMENT_BASE_URL"
+    affiliation-management = "AFFILIATION_MANAGEMENT_BASE_URL"
+    training-management    = "TRAINING_MANAGEMENT_BASE_URL"
+    complementary-services = "COMPLEMENTARY_SERVICES_BASE_URL"
+    events-management      = "EVENTS_MANAGEMENT_BASE_URL"
+  }
+  bff_upstreams = {
+    bff-web    = keys(local.gke_internal_apis)
+    bff-mobile = ["users-management", "affiliation-management", "training-management", "events-management"]
   }
 
   # Servicios de Cloud Run. El puerto web es provisional hasta que exista su imagen.
@@ -74,6 +107,23 @@ locals {
     web        = { port = 8080, startup_probe_path = null, liveness_probe_path = null, vpc = false }
     bff-web    = { port = 8000, startup_probe_path = "/health/ready", liveness_probe_path = "/health/live", vpc = true }
     bff-mobile = { port = 8000, startup_probe_path = "/health/ready", liveness_probe_path = "/health/live", vpc = true }
+  }
+
+  # URL determinista de Cloud Run: permite que web y BFF se referencien sin ciclo.
+  cloud_run_urls = { for name, s in local.cloud_run_services : name => "https://${name}-${data.google_project.this.number}.${var.region}.run.app" }
+
+  # Configuración que la plataforma inyecta en Cloud Run; cloud_run_env la complementa.
+  cloud_run_platform_env = {
+    web = {
+      BFF_WEB_BASE_URL              = local.cloud_run_urls["bff-web"]
+      REGISTRATION_POLICIES_VERSION = var.app_config.registration_policies_version
+      HEALTH_DATA_CONSENT_VERSION   = var.app_config.health_data_consent_version
+    }
+    bff-web = merge(
+      { for api in local.bff_upstreams["bff-web"] : local.gke_internal_apis[api] => "http://${google_compute_address.gke_internal_api[api].address}" },
+      { CORS_ALLOWED_ORIGINS = local.cloud_run_urls["web"] },
+    )
+    bff-mobile = { for api in local.bff_upstreams["bff-mobile"] : local.gke_internal_apis[api] => "http://${google_compute_address.gke_internal_api[api].address}" }
   }
 
   service_accounts = merge(
@@ -247,23 +297,40 @@ module "pubsub" {
   depends_on = [module.project_services]
 }
 
-# HU001 (ADR-024): mensajería de Afiliación. Solo affiliation-outbox publica en
-# el tópico de integración y solo affiliation-consumer consume el alta gratuita.
-resource "google_pubsub_topic" "affiliation" {
+# Tópicos de integración (afiliacion: HU001, ADR-024; servicios). Solo el
+# publicador outbox de cada dominio publica en el suyo.
+resource "google_pubsub_topic" "integration" {
+  for_each = local.integration_topics
+
   project                    = var.project_id
-  name                       = local.affiliation_topic
+  name                       = each.value
   message_retention_duration = var.pubsub.message_retention_duration
 
   depends_on = [module.project_services]
 }
 
-resource "google_pubsub_topic_iam_member" "affiliation_publishers" {
-  for_each = { for key, w in local.gke_workloads : key => module.iam.members[key] if w.domain == "afiliacion" && w.kind == "outbox" }
+resource "google_pubsub_topic_iam_member" "integration_publishers" {
+  for_each = {
+    for key, w in local.gke_workloads : key => w
+    if w.kind == "outbox" && contains(keys(local.integration_topics), coalesce(w.domain, "-"))
+  }
 
   project = var.project_id
-  topic   = google_pubsub_topic.affiliation.name
+  topic   = google_pubsub_topic.integration[each.value.domain].name
   role    = "roles/pubsub.publisher"
-  member  = each.value
+  member  = module.iam.members[each.key]
+}
+
+# IP interna fija por API de GKE: el Service LoadBalancer interno del overlay
+# de producción la toma, y los BFF de Cloud Run la reciben como URL.
+resource "google_compute_address" "gke_internal_api" {
+  for_each = local.gke_internal_apis
+
+  project      = var.project_id
+  region       = var.region
+  name         = "${local.name_prefix}-${each.key}"
+  address_type = "INTERNAL"
+  subnetwork   = module.network.gke_subnetwork_id
 }
 
 module "free_plan_consumer" {
@@ -317,7 +384,7 @@ module "cloud_run" {
   concurrency           = var.cloud_run.concurrency
   timeout_seconds       = var.cloud_run.timeout_seconds
   allow_unauthenticated = contains(var.cloud_run_public_services, each.key)
-  env                   = merge({ APP_ENV = var.environment }, lookup(var.cloud_run_env, each.key, {}))
+  env                   = merge({ APP_ENV = var.environment }, local.cloud_run_platform_env[each.key], lookup(var.cloud_run_env, each.key, {}))
   secret_env            = lookup(var.cloud_run_secret_env, each.key, {})
   vpc_network           = each.value.vpc ? module.network.network_id : null
   vpc_subnetwork        = each.value.vpc ? module.network.serverless_subnetwork_id : null

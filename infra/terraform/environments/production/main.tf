@@ -32,4 +32,10 @@ module "platform" {
   cloud_run_secret_env      = var.cloud_run_secret_env
   app_secrets               = var.app_secrets
   alert_emails              = var.alert_emails
+
+  app_config = {
+    registration_policies_version        = var.registration_policies_version
+    health_data_consent_version          = var.health_data_consent_version
+    affiliation_expected_catalog_version = var.affiliation_expected_catalog_version
+  }
 }

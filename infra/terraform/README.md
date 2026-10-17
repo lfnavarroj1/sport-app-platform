@@ -69,7 +69,7 @@ Desarrollo no usa GCP ni credenciales en la nube. Implementa la [arquitectura Te
 
 ### 1.2 Conceptos mínimos
 
-- **Raíz:** carpeta donde se ejecuta `terraform`. Hay tres: `environments/local`, `environments/production` y `bootstrap/gcp-state` (preparación de producción). Cada una tiene su propio estado.
+- **Raíz:** carpeta donde se ejecuta `terraform`. Hay cuatro: `environments/local`, `environments/production`, `environments/production-workloads` (cargas en GKE) y `bootstrap/gcp-state` (preparación de producción). Cada una tiene su propio estado.
 - **Estado:** registro de lo que administra Terraform. El de desarrollo es un archivo local ignorado por Git; el de producción está en un bucket GCS.
 - **Plan / apply:** `plan` muestra qué cambiaría y `apply` lo ejecuta. Con `-out` se aplica exactamente el plan revisado.
 - **Imagen y tag:** el backend se entrega como imágenes de contenedor `sportapp/<componente>:<tag>`. En desarrollo se usan imágenes construidas en tu Docker; en producción, imágenes de Artifact Registry identificadas por su digest (`@sha256:…`).
@@ -87,16 +87,16 @@ Desarrollo no usa GCP ni credenciales en la nube. Implementa la [arquitectura Te
 | Estado Terraform | `terraform.tfstate` local | bucket GCS en el proyecto de gestión |
 | Credenciales | ninguna | ADC con impersonación o WIF; nunca llaves JSON |
 
-En ambos ambientes se usan los mismos nombres: bases `usuarios_write/read`, `afiliacion`, `servicios`, `entrenamientos_write/read` y `eventos_write/read`, y tópicos `sportapp.{usuarios,afiliacion,entrenamientos,eventos}.v1`. Gracias a eso, el código que funciona en local funciona igual en producción. Cada suscripción entrega en orden, espera de 10 a 600 s entre reintentos y tiene una DLQ con su suscripción operativa `<DLQ>.ops`:
+En ambos ambientes se usan los mismos nombres: bases `usuarios_write/read`, `afiliacion`, `servicios`, `entrenamientos_write/read` y `eventos_write/read`, y tópicos `sportapp.{usuarios,afiliacion,servicios,entrenamientos,eventos}.v1`. Gracias a eso, el código que funciona en local funciona igual en producción. Cada suscripción entrega en orden, espera de 10 a 600 s entre reintentos y tiene una DLQ con su suscripción operativa `<DLQ>.ops`:
 
 | Consumidor | Tópico | Suscripción | DLQ | Entregas |
 | --- | --- | --- | --- | --- |
 | `users-management-read-projector` (HU001, CMP-001) | `sportapp.usuarios.v1` | `proyector-usuarios-v1` | `sportapp.usuarios.proyeccion.dlq` | 5 |
 | `affiliation-management-free-plan-consumer` (HU001, ADR-024) | `sportapp.usuarios.v1`, solo `attributes.event_type = "usuario.registrado.v1"` | `sportapp.afiliacion.alta-gratuita.v1` | `sportapp.afiliacion.alta-gratuita.dlq` | 10 |
 | `training-management-read-projector` (HU010, CMP-003) | `sportapp.entrenamientos.v1` | `proyector-entrenamientos-v1` | `sportapp.entrenamientos.proyeccion.dlq` | 10 |
-| `events-management-read-projector` | `sportapp.eventos.v1` | `sportapp.eventos.v1.read-projector` | `sportapp.eventos.v1.dlq` | 10 |
+| `events-management-read-projector` (CMP-004) | `sportapp.eventos.v1` | `proyector-eventos-v1` | `sportapp.eventos.proyeccion.dlq` | 10 |
 
-Los nombres son los que consume el backend (`<servicio>/settings.py`). `sportapp.afiliacion.v1` recibe `suscripcion.activada.v1` de `affiliation-management-outbox-publisher` y no tiene suscripción mientras no exista un consumidor aprobado (ADR-024). Eventos conserva los nombres anteriores, que no coinciden con los de su proyector (`proyector-eventos-v1`); alinearlos corresponde a su propia historia.
+Los nombres son los que consume el backend (`<servicio>/settings.py`). `sportapp.afiliacion.v1` (de `affiliation-management-outbox-publisher`, ADR-024) y `sportapp.servicios.v1` (de `complementary-services-outbox-publisher`) no tienen suscripción mientras no exista un consumidor aprobado.
 
 El ConfigMap `sportapp-runtime` publica la versión de políticas (`REGISTRATION_POLICIES_VERSION`, que leen `users-management` y `web`) y el catálogo que Afiliación exige para quedar lista (`AFFILIATION_EXPECTED_CATALOG_VERSION`). Los valores aprobados están en `variables.tf` (`registration_policies_version` y `affiliation_expected_catalog_version`). El catálogo se cambia en el mismo release que trae su migración (ADR-036).
 
@@ -135,7 +135,8 @@ infra/
 └── terraform/
     ├── environments/
     │   ├── local/                 # DESARROLLO: Docker Desktop
-    │   └── production/            # PRODUCCIÓN: GCP
+    │   ├── production/            # PRODUCCIÓN: infraestructura GCP (red, GKE, Cloud SQL, Pub/Sub, Cloud Run…)
+    │   └── production-workloads/  # PRODUCCIÓN: cargas del backend en GKE (estado propio)
     ├── bootstrap/gcp-state/       # una vez, antes de producción: estado, WIF, cuentas, presupuestos
     └── modules/gcp/               # módulos de producción (red, GKE, Cloud SQL, Pub/Sub, Cloud Run…)
 ```
@@ -645,30 +646,42 @@ Los tags son inmutables: no se puede volver a publicar `v0.2.0` con otro conteni
 3. Cloud Run pasa el tráfico a la revisión nueva cuando `/health/ready` responde. Para revertir, restaura el digest anterior y aplica.
 4. Comprueba que `GET /version` reporte la versión del manifiesto.
 
-El frontend se despliega igual, con dos variables que conectan web y BFF (las URL salen de `terraform output cloud_run_urls`):
+El frontend se despliega igual (`cloud_run_images.web`). La plataforma configura sola lo que conecta los servicios; `terraform output cloud_run_env` muestra el resultado:
 
-```hcl
-cloud_run_images = {
-  web = "us-central1-docker.pkg.dev/sportapp-prod-1234/sportapp/web@sha256:<digest>"
-}
+- `web`: `BFF_WEB_BASE_URL` (URL determinista de `bff-web`), `REGISTRATION_POLICIES_VERSION` y `HEALTH_DATA_CONSENT_VERSION`;
+- `bff-web`: `CORS_ALLOWED_ORIGINS` (URL de `web`) y la URL interna de cada API de GKE que exige (`USERS_`, `AFFILIATION_`, `TRAINING_`, `COMPLEMENTARY_SERVICES_` y `EVENTS_MANAGEMENT_BASE_URL`);
+- `bff-mobile`: las URL internas de Usuarios, Afiliación, Entrenamientos y Eventos.
 
-cloud_run_env = {
-  web     = { BFF_WEB_BASE_URL = "https://bff-web-xxxx.a.run.app", REGISTRATION_POLICIES_VERSION = "<versión vigente>" }
-  bff-web = { CORS_ALLOWED_ORIGINS = "https://web-xxxx.a.run.app" }
-}
-```
-
-La primera vez, crea primero los servicios para conocer sus URL y luego completa estas variables con un segundo `apply`.
+Las URL internas son IP fijas que reserva esta raíz (`gke_internal_apis`); el balanceador interno de cada API las toma en [8.4](#84-desplegar-en-gke). Las versiones salen de `registration_policies_version`, `health_data_consent_version` y `affiliation_expected_catalog_version`. `health_data_consent_version` no tiene valor aprobado: el plan se detiene hasta que se pase con `-var` o en `gcp.auto.tfvars`.
 
 ### 8.4 Desplegar en GKE
 
-Terraform crea el clúster y la identidad de cada carga, pero no aplica manifiestos. Falta un overlay de producción, `infra/kubernetes/production`, con la misma idea que el local: los manifiestos base del backend más lo propio de producción. Ese overlay debe:
+`environments/production-workloads` aplica en GKE los manifiestos `deploy/k8s/base` del backend (submódulo `components/backend` por defecto) con lo propio de producción. Tiene estado propio (prefijo `sportapp/production-workloads` en el mismo bucket) y lee del estado de `environments/production` el clúster, las identidades, la IP de Cloud SQL, las IP internas y la configuración no secreta.
 
-- crear el namespace `sportapp` y una KSA por carga, anotada con la salida `gke_workload_identities` (`iam.gke.io/gcp-service-account`);
-- usar `DATABASE_HOST` = `cloud_sql.private_ip`, las contraseñas `db-password-<dominio>` mediante el complemento Secret Manager de GKE y `PUBSUB_PROJECT_ID` = proyecto, sin emulador;
-- exponer con un Service `LoadBalancer` interno las APIs que llaman los BFF;
-- fijar las imágenes por digest (`images[].digest` en Kustomize) y ejecutar las migraciones antes que las cargas; en particular, habilitar las réplicas de Afiliación solo cuando su migración de catálogo haya terminado (ADR-024);
-- tomar `REGISTRATION_POLICIES_VERSION` y `AFFILIATION_EXPECTED_CATALOG_VERSION` de la configuración del ambiente, con los mismos valores que la composición local.
+| Qué hace | Cómo |
+| --- | --- |
+| Despliega los 15 Deployments del backend (APIs, publicadores outbox, proyectores, consumidor del alta gratuita y `third-party-management`) | Kustomize sobre `deploy/k8s/base`; `bff-web` y `bff-mobile` se retiran porque van a Cloud Run |
+| Workload Identity | una KSA por carga y una `<servicio>-migrate` por dominio, anotadas con `gke_workload_identities`; cada Deployment y Job usa la suya |
+| Configuración | `sportapp-runtime` con `APP_ENV=production`, `DATABASE_HOST` (IP privada de Cloud SQL, TLS obligatorio), `PUBSUB_PROJECT_ID` sin emulador y las versiones del ambiente |
+| Secretos | `sportapp-database` (de `db-password-<dominio>`) y `sportapp-users-jwt` (de `users-jwt-private-key`) se copian de Secret Manager con valores efímeros: no quedan en el estado. `secrets_revision` los vuelve a copiar tras una rotación |
+| Imágenes | Artifact Registry por digest (`image_digests`); un tag se rechaza |
+| Migraciones | los 8 Jobs terminan (`kubernetes_manifest` con `wait`) antes de crear o actualizar cualquier Deployment; un digest nuevo reemplaza el Job |
+| BFF → APIs | `users-management`, `affiliation-management`, `training-management`, `complementary-services` y `events-management` se exponen con un balanceador interno en su IP reservada, solo para la subred de Cloud Run |
+| Réplicas | 2 por API (`api_replicas`); los workers conservan las del backend |
+
+Orden: primero `environments/production` (infraestructura y Cloud Run) y después `environments/production-workloads`:
+
+```powershell
+cd infra\terraform\environments\production-workloads
+Copy-Item backend.hcl.example backend.hcl            # mismo bucket de estado
+Copy-Item gcp.auto.tfvars.example gcp.auto.tfvars    # proyecto, bucket y digests
+git -C ..\..\..\.. submodule update --init components/backend
+terraform init -backend-config=backend.hcl
+terraform plan -out tfplan
+terraform apply tfplan
+```
+
+La identidad que ejecuta Terraform necesita acceso al clúster (`roles/container.developer` o superior) y `roles/secretmanager.secretAccessor` sobre los secretos de base y JWT, también para el plan. Un plan de revisión sin acceso a los secretos se hace con `-var sync_secrets=false`; nunca se aplica así un ambiente nuevo.
 
 ### 8.5 Resumen por evento
 
@@ -676,8 +689,8 @@ Terraform crea el clúster y la identidad de cada carga, pero no aplica manifies
 | --- | --- | --- |
 | Cambio en una rama | CI del componente | probar en local con un tag nuevo ([5.1](#51-cambió-el-código-del-backend)) |
 | Merge a `develop` | CI completa | actualizar el clon y aplicar en local ([5.2](#52-cambiaron-los-manifiestos-del-backend)) |
-| Release del componente | tag y publicación en Artifact Registry de producción | digests en el manifiesto y en `cloud_run_images` |
-| Promoción aprobada | — | `apply` de producción con revisión |
+| Release del componente | tag y publicación en Artifact Registry de producción | digests en el manifiesto, en `cloud_run_images` (Cloud Run) y en `image_digests` (GKE) |
+| Promoción aprobada | — | `apply` de `production` y luego de `production-workloads`, con revisión |
 | Rollback | — | digest anterior y `apply` |
 
 ## 9. Pruebas
@@ -688,6 +701,7 @@ Las pruebas usan proveedores simulados: no necesitan clúster, credenciales ni r
 terraform fmt -check -recursive infra\terraform
 cd infra\terraform\environments\local;      terraform init; terraform test
 cd ..\production;                           terraform init -backend=false; terraform test
+cd ..\production-workloads;                 terraform init -backend=false; terraform test
 cd ..\..\modules\gcp\platform;              terraform init -backend=false; terraform test
 cd ..\pubsub;                               terraform init -backend=false; terraform test
 cd ..\pubsub-consumer;                      terraform init -backend=false; terraform test
@@ -698,6 +712,7 @@ cd ..\observability;                        terraform init -backend=false; terra
 | --- | --- |
 | `environments/local/tests` | solo `docker-desktop` es aceptado, la ruta del backend debe existir, `sportapp-runtime` publica la versión de políticas y el catálogo aprobados y Afiliación toma el catálogo de allí |
 | `environments/production/tests` | el `terraform.tfvars` de producción produce un plan válido con las protecciones obligatorias, la mensajería de Usuarios, Afiliación y Entrenamientos y la versión de políticas de la web |
+| `environments/production-workloads/tests` | con Kustomize real sobre el clon del backend: los 15 Deployments en GKE sin los BFF, KSA y Workload Identity por carga y por migración, imágenes por digest, balanceadores internos en las IP reservadas, 2 réplicas por API y `sportapp-runtime` de producción; rechaza tags y un backend ausente |
 | `modules/gcp/platform/tests` | aislamiento de secretos por dominio, tópicos solo en dominios CQRS, nombres de Pub/Sub por dominio, tópico y alta gratuita de Afiliación con IAM mínimo, rechazo de imágenes por tag y de secretos no declarados, reglas de producción |
 | `modules/gcp/pubsub/tests` | nombres de contrato, orden, entregas por dominio (5 en Usuarios, 10 por defecto), espera de 10 a 600 s, DLQ e IAM mínimo de publicador y proyector |
 | `modules/gcp/pubsub-consumer/tests` | alta gratuita: filtro `usuario.registrado.v1`, orden, 10 entregas, espera de 10 a 600 s, DLQ e IAM mínimo del consumidor |

@@ -42,3 +42,28 @@ output "app_secret_ids" {
   description = "Secretos de aplicación pendientes de cargar con gcloud."
   value       = module.platform.app_secret_ids
 }
+
+output "integration_topics" {
+  description = "Tópicos de integración de dominios no CQRS."
+  value       = module.platform.integration_topics
+}
+
+output "gke_internal_apis" {
+  description = "Service de GKE -> IP interna fija; la usa environments/production-workloads."
+  value       = module.platform.gke_internal_apis
+}
+
+output "gke_internal_source_ranges" {
+  description = "Rangos que pueden llegar a los balanceadores internos de GKE."
+  value       = module.platform.gke_internal_source_ranges
+}
+
+output "runtime_config" {
+  description = "Configuración no secreta del ConfigMap sportapp-runtime de GKE."
+  value       = module.platform.runtime_config
+}
+
+output "cloud_run_env" {
+  description = "Variables de entorno no secretas de cada servicio de Cloud Run."
+  value       = module.platform.cloud_run_env
+}

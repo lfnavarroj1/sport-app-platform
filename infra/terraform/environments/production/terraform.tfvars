@@ -72,13 +72,21 @@ cloud_run_images = {}
 # Provisional hasta decidir la capa de borde (API Gateway / balanceador).
 cloud_run_public_services = ["web", "bff-web", "bff-mobile"]
 
+# La plataforma agrega las URL entre web, BFF y APIs de GKE y las versiones de app_config.
 cloud_run_env = {
-  # HU001: la misma versión de políticas que valida users-management.
-  web        = { REGISTRATION_POLICIES_VERSION = "sportapp-c108-c108plus.v1" }
   bff-web    = { LOG_LEVEL = "INFO" }
   bff-mobile = { LOG_LEVEL = "INFO" }
 }
 
+# Versiones del ambiente (sportapp-runtime en GKE y web en Cloud Run).
+registration_policies_version        = "sportapp-c108-c108plus.v1" # HU001, aprobada 2026-10-17
+affiliation_expected_catalog_version = "plans-2026-10-13.v1"       # ADR-036, migración 0003_plan_price_offers
+# health_data_consent_version: sin valor aprobado (ADR-034). Se pasa con -var o
+# en gcp.auto.tfvars cuando el responsable la defina; sin ella el plan se detiene.
+
 # Solo contenedores; los valores se cargan con gcloud (ver README).
-app_secrets          = {}
+# users-jwt-private-key: clave Ed25519 de users-management (Secret sportapp-users-jwt en GKE).
+app_secrets = {
+  users-jwt-private-key = { accessors = [] }
+}
 cloud_run_secret_env = {}

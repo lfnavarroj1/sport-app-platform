@@ -76,6 +76,12 @@ variables {
     concurrency     = 80
     timeout_seconds = 30
   }
+
+  app_config = {
+    registration_policies_version        = "sportapp-c108-c108plus.v1"
+    health_data_consent_version          = "consentimiento-prueba.v1"
+    affiliation_expected_catalog_version = "plans-2026-10-13.v1"
+  }
 }
 
 run "infraestructura_sin_imagenes" {
@@ -92,7 +98,7 @@ run "infraestructura_sin_imagenes" {
   }
 
   assert {
-    condition     = length(google_secret_manager_secret_iam_member.db_password) == 13
+    condition     = length(google_secret_manager_secret_iam_member.db_password) == 19
     error_message = "Todas las cargas con dominio, y solo ellas, leen su contraseña."
   }
 
@@ -124,11 +130,11 @@ run "infraestructura_sin_imagenes" {
   assert {
     condition = output.pubsub["eventos"] == {
       topic                    = "sportapp.eventos.v1"
-      projector_subscription   = "sportapp.eventos.v1.read-projector"
-      dead_letter_topic        = "sportapp.eventos.v1.dlq"
-      dead_letter_subscription = "sportapp.eventos.v1.dlq.ops"
+      projector_subscription   = "proyector-eventos-v1"
+      dead_letter_topic        = "sportapp.eventos.proyeccion.dlq"
+      dead_letter_subscription = "sportapp.eventos.proyeccion.dlq.ops"
     }
-    error_message = "Los dominios sin nombres de contrato conservan los nombres por defecto del módulo pubsub."
+    error_message = "CMP-004: Eventos usa los nombres que consume events-management-read-projector."
   }
 
   assert {
@@ -143,11 +149,44 @@ run "infraestructura_sin_imagenes" {
 
   assert {
     condition = (
-      keys(google_pubsub_topic_iam_member.affiliation_publishers) == ["affiliation-outbox"] &&
-      google_pubsub_topic_iam_member.affiliation_publishers["affiliation-outbox"].topic == "sportapp.afiliacion.v1" &&
-      google_pubsub_topic_iam_member.affiliation_publishers["affiliation-outbox"].role == "roles/pubsub.publisher"
+      toset(keys(google_pubsub_topic_iam_member.integration_publishers)) == toset(["affiliation-outbox", "services-outbox"]) &&
+      google_pubsub_topic_iam_member.integration_publishers["affiliation-outbox"].topic == "sportapp.afiliacion.v1" &&
+      google_pubsub_topic_iam_member.integration_publishers["services-outbox"].topic == "sportapp.servicios.v1" &&
+      alltrue([for m in google_pubsub_topic_iam_member.integration_publishers : m.role == "roles/pubsub.publisher"])
     )
-    error_message = "Solo affiliation-management-outbox-publisher publica en sportapp.afiliacion.v1."
+    error_message = "Solo el publicador outbox de Afiliación y el de Servicios publican, cada uno en su tópico de integración."
+  }
+
+  assert {
+    condition     = output.integration_topics == { afiliacion = "sportapp.afiliacion.v1", servicios = "sportapp.servicios.v1" }
+    error_message = "Afiliación y Servicios tienen tópico de integración."
+  }
+
+  # Cada dominio con base tiene una identidad de migración que solo lee su secreto.
+  assert {
+    condition = alltrue([
+      for key, domain in {
+        users-migrate       = "usuarios"
+        affiliation-migrate = "afiliacion"
+        services-migrate    = "servicios"
+        training-migrate    = "entrenamientos"
+        events-migrate      = "eventos"
+      } : google_secret_manager_secret_iam_member.db_password[key].secret_id == "db-password-${domain}"
+    ])
+    error_message = "Los Jobs de migración tienen identidad propia por dominio y leen solo su secreto."
+  }
+
+  assert {
+    condition     = toset(keys(output.gke_internal_apis)) == toset(["users-management", "affiliation-management", "training-management", "complementary-services", "events-management"])
+    error_message = "Cada API que llaman los BFF tiene una IP interna reservada."
+  }
+
+  assert {
+    condition = (
+      alltrue([for a in google_compute_address.gke_internal_api : a.address_type == "INTERNAL"]) &&
+      output.gke_internal_source_ranges == ["10.10.16.0/26"]
+    )
+    error_message = "Las IP de las APIs son internas y solo las alcanza la subred de Cloud Run."
   }
 
   assert {
@@ -184,6 +223,30 @@ run "servicios_y_secretos_de_aplicacion" {
   assert {
     condition     = toset(module.app_secrets.accessor_bindings) == toset(["jwt-signing-key/bff-web", "jwt-signing-key/users-api"])
     error_message = "El secreto lo leen sus accessors y los servicios que lo montan."
+  }
+
+  # Los BFF arrancan solo si reciben la URL de cada API de GKE que exige su configuración.
+  assert {
+    condition = (
+      toset(keys(output.cloud_run_env["bff-web"])) == toset([
+        "APP_ENV", "USERS_MANAGEMENT_BASE_URL", "AFFILIATION_MANAGEMENT_BASE_URL", "TRAINING_MANAGEMENT_BASE_URL",
+        "COMPLEMENTARY_SERVICES_BASE_URL", "EVENTS_MANAGEMENT_BASE_URL", "CORS_ALLOWED_ORIGINS",
+      ]) &&
+      toset(keys(output.cloud_run_env["bff-mobile"])) == toset([
+        "APP_ENV", "USERS_MANAGEMENT_BASE_URL", "AFFILIATION_MANAGEMENT_BASE_URL", "TRAINING_MANAGEMENT_BASE_URL", "EVENTS_MANAGEMENT_BASE_URL",
+      ])
+    )
+    error_message = "bff-web y bff-mobile reciben las URL internas de las APIs que exige su configuración."
+  }
+
+  assert {
+    condition = (
+      output.cloud_run_env["bff-web"].CORS_ALLOWED_ORIGINS == "https://web-123456789012.us-central1.run.app" &&
+      output.cloud_run_env["web"].BFF_WEB_BASE_URL == "https://bff-web-123456789012.us-central1.run.app" &&
+      output.cloud_run_env["web"].REGISTRATION_POLICIES_VERSION == "sportapp-c108-c108plus.v1" &&
+      output.cloud_run_env["web"].HEALTH_DATA_CONSENT_VERSION == "consentimiento-prueba.v1"
+    )
+    error_message = "web y bff-web se referencian por sus URL deterministas y la web recibe las versiones del ambiente."
   }
 }
 

@@ -161,6 +161,26 @@ variable "cloud_run_secret_env" {
   default     = {}
 }
 
+variable "registration_policies_version" {
+  description = "Versión de políticas que aceptan los usuarios al registrarse (HU001); la leen users-management y web."
+  type        = string
+}
+
+variable "health_data_consent_version" {
+  description = "Versión vigente del consentimiento de datos de salud (ADR-034). Sin valor aprobado: debe definirla el responsable antes de desplegar."
+  type        = string
+
+  validation {
+    condition     = length(var.health_data_consent_version) >= 1 && length(var.health_data_consent_version) <= 64
+    error_message = "Defina la versión de consentimiento aprobada (1 a 64 caracteres) antes de desplegar."
+  }
+}
+
+variable "affiliation_expected_catalog_version" {
+  description = "Catálogo de planes que Afiliación exige para quedar lista (ADR-036); cambia con el release que trae su migración."
+  type        = string
+}
+
 variable "app_secrets" {
   description = "Secretos de aplicación (solo contenedores) y cargas que pueden leerlos."
   type = map(object({

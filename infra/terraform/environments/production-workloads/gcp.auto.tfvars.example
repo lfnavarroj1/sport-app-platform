@@ -1,0 +1,15 @@
+# Copiar a gcp.auto.tfvars (ignorado por Git). Sin credenciales.
+
+project_id   = "sportapp-prod-1234"
+state_bucket = "sportapp-mgmt-1234-tfstate"
+# impersonate_service_account = "tf-apply-production@sportapp-mgmt-1234.iam.gserviceaccount.com"
+
+# Digest publicado de cada componente (release-manifest.yaml); nunca un tag.
+image_digests = {
+  users-management       = "sha256:<64 hex>"
+  affiliation-management = "sha256:<64 hex>"
+  complementary-services = "sha256:<64 hex>"
+  training-management    = "sha256:<64 hex>"
+  events-management      = "sha256:<64 hex>"
+  third-party-management = "sha256:<64 hex>"
+}

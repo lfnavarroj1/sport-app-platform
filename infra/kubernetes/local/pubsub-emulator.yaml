@@ -56,18 +56,18 @@ spec:
               valueFrom:
                 configMapKeyRef: {name: sportapp-runtime, key: PUBSUB_PROJECT_ID}
             # Los mismos nombres y políticas que crea Terraform en GCP.
-            # sportapp.afiliacion.v1 no tiene suscripción: no hay consumidor aprobado (ADR-024).
+            # sportapp.afiliacion.v1 y sportapp.servicios.v1 no tienen suscripción: no hay consumidor aprobado.
             - name: PUBSUB_TOPICS
-              value: sportapp.usuarios.v1 sportapp.afiliacion.v1 sportapp.entrenamientos.v1 sportapp.eventos.v1
+              value: sportapp.usuarios.v1 sportapp.afiliacion.v1 sportapp.servicios.v1 sportapp.entrenamientos.v1 sportapp.eventos.v1
             # <suscripción> <tópico> <DLQ> <entregas> [filtro]
             #   usuarios: CMP-001 (HU001); alta gratuita: ADR-024 y R-19 (HU001);
-            #   entrenamientos: CMP-003 (HU010); eventos conserva los nombres anteriores.
+            #   entrenamientos: CMP-003 (HU010); eventos: CMP-004.
             - name: PUBSUB_SUBSCRIPTIONS
               value: |
                 proyector-usuarios-v1 sportapp.usuarios.v1 sportapp.usuarios.proyeccion.dlq 5
                 sportapp.afiliacion.alta-gratuita.v1 sportapp.usuarios.v1 sportapp.afiliacion.alta-gratuita.dlq 10 attributes.event_type = "usuario.registrado.v1"
                 proyector-entrenamientos-v1 sportapp.entrenamientos.v1 sportapp.entrenamientos.proyeccion.dlq 10
-                sportapp.eventos.v1.read-projector sportapp.eventos.v1 sportapp.eventos.v1.dlq 10
+                proyector-eventos-v1 sportapp.eventos.v1 sportapp.eventos.proyeccion.dlq 10
           ports:
             - {name: grpc, containerPort: 8085}
           readinessProbe:

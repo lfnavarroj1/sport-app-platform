@@ -43,11 +43,44 @@ output "pubsub" {
 output "affiliation_pubsub" {
   description = "Mensajería de Afiliación (ADR-024): tópico de integración y alta gratuita."
   value = {
-    topic                       = google_pubsub_topic.affiliation.name
+    topic                       = google_pubsub_topic.integration["afiliacion"].name
     free_plan_subscription      = module.free_plan_consumer.subscription
     free_plan_dead_letter_topic = module.free_plan_consumer.dead_letter_topic
     free_plan_dead_letter_ops   = module.free_plan_consumer.dead_letter_subscription
   }
+}
+
+output "integration_topics" {
+  description = "Tópicos de integración de dominios no CQRS."
+  value       = { for domain, t in google_pubsub_topic.integration : domain => t.name }
+}
+
+# Entradas no secretas de environments/production-workloads.
+output "gke_internal_apis" {
+  description = "Service de GKE -> IP interna fija de su balanceador interno."
+  value       = { for name, a in google_compute_address.gke_internal_api : name => a.address }
+}
+
+output "gke_internal_source_ranges" {
+  description = "Rangos que pueden llegar a los balanceadores internos: la subred de Cloud Run."
+  value       = [var.network.serverless_cidr]
+}
+
+output "runtime_config" {
+  description = "Configuración no secreta del ConfigMap sportapp-runtime de GKE."
+  value = {
+    app_env                              = var.environment
+    project_id                           = var.project_id
+    database_host                        = module.cloud_sql.private_ip_address
+    registration_policies_version        = var.app_config.registration_policies_version
+    health_data_consent_version          = var.app_config.health_data_consent_version
+    affiliation_expected_catalog_version = var.app_config.affiliation_expected_catalog_version
+  }
+}
+
+output "cloud_run_env" {
+  description = "Variables de entorno no secretas de cada servicio de Cloud Run (las de la plataforma más cloud_run_env)."
+  value       = { for name, s in local.cloud_run_services : name => merge({ APP_ENV = var.environment }, local.cloud_run_platform_env[name], lookup(var.cloud_run_env, name, {})) }
 }
 
 output "cloud_run_urls" {

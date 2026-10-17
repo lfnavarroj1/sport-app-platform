@@ -1,0 +1,5 @@
+# Copiar a backend.hcl (ignorado por Git) y ejecutar:
+#   terraform init -backend-config=backend.hcl
+# Mismo bucket que environments/production; el prefijo está en versions.tf.
+bucket = "sportapp-mgmt-1234-tfstate"
+# impersonate_service_account = "tf-plan-production@sportapp-mgmt-1234.iam.gserviceaccount.com"
