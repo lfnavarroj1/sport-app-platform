@@ -1,4 +1,9 @@
 # Emulador oficial de Pub/Sub. No reproduce IAM ni cuotas de GCP.
+#
+# El emulador guarda todo en memoria: cada vez que el contenedor arranca vuelve
+# a crear los tópicos, suscripciones y DLQ de GCP (pubsub-init/create-resources.sh)
+# y solo queda listo cuando terminó. Si el emulador se detiene, el contenedor
+# termina y Kubernetes lo reinicia con los recursos de nuevo.
 apiVersion: v1
 kind: Service
 metadata:
@@ -33,11 +38,36 @@ spec:
       containers:
         - name: emulator
           image: gcr.io/google.com/cloudsdktool/google-cloud-cli:588.0.0-emulators@sha256:be2f0e582a94c9e06e7a384fe2b3b39d590eeb8da65a110eda991598c100fe80
-          command: [gcloud, beta, emulators, pubsub, start, --host-port=0.0.0.0:8085]
+          command:
+            - sh
+            - -c
+            - |
+              gcloud beta emulators pubsub start --host-port=0.0.0.0:8085 &
+              emulator=$!
+              trap 'kill "$emulator"' TERM INT
+              if ! PUBSUB_EMULATOR_HOST=localhost:8085 sh /scripts/create-resources.sh; then
+                kill "$emulator"
+                exit 1
+              fi
+              touch /tmp/pubsub-resources-ready
+              wait "$emulator"
+          env:
+            - name: PUBSUB_PROJECT_ID
+              valueFrom:
+                configMapKeyRef: {name: sportapp-runtime, key: PUBSUB_PROJECT_ID}
+            # <tópico> <suscripción del proyector> <DLQ>, los mismos nombres que
+            # crea el módulo GCP pubsub. Entrenamientos usa los de su contrato
+            # (CMP-003, HU010); usuarios y eventos conservan los anteriores.
+            - name: PUBSUB_PROJECTIONS
+              value: |
+                sportapp.usuarios.v1 sportapp.usuarios.v1.read-projector sportapp.usuarios.v1.dlq
+                sportapp.entrenamientos.v1 proyector-entrenamientos-v1 sportapp.entrenamientos.proyeccion.dlq
+                sportapp.eventos.v1 sportapp.eventos.v1.read-projector sportapp.eventos.v1.dlq
           ports:
             - {name: grpc, containerPort: 8085}
           readinessProbe:
-            tcpSocket: {port: grpc}
+            exec:
+              command: [test, -f, /tmp/pubsub-resources-ready]
             periodSeconds: 5
           resources:
             requests: {cpu: 100m, memory: 256Mi}
@@ -45,3 +75,8 @@ spec:
           securityContext:
             allowPrivilegeEscalation: false
             capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: scripts, mountPath: /scripts, readOnly: true}
+      volumes:
+        - name: scripts
+          configMap: {name: pubsub-init}

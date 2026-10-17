@@ -7,7 +7,6 @@ kind: Kustomization
 resources:
   - postgres.yaml
   - pubsub-emulator.yaml
-  - pubsub-init.yaml
   - access.yaml
 configMapGenerator:
   - name: postgres-init

@@ -1,5 +1,5 @@
 # Mensajería de un dominio CQRS: tópico sportapp.<dominio>.v1, suscripción del
-# proyector con reintentos y DLQ, y una suscripción operativa sobre la DLQ.
+# proyector con reintentos y DLQ, y una suscripción operativa <dlq>.ops.
 # Solo el publicador outbox publica y solo el proyector consume.
 
 terraform {
@@ -37,6 +37,15 @@ variable "settings" {
   })
 }
 
+variable "names" {
+  description = "Suscripción del proyector y tópico DLQ que fija el contrato del dominio (CMP-002); null usa sportapp.<dominio>.v1.read-projector y sportapp.<dominio>.v1.dlq."
+  type = object({
+    projector_subscription = string
+    dead_letter_topic      = string
+  })
+  default = null
+}
+
 variable "publisher_members" {
   description = "Miembros con roles/pubsub.publisher sobre el tópico, por clave estable."
   type        = map(string)
@@ -50,8 +59,10 @@ variable "subscriber_members" {
 }
 
 locals {
-  topic_name   = "sportapp.${var.domain}.v1"
-  pubsub_agent = "serviceAccount:service-${var.project_number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+  topic_name             = "sportapp.${var.domain}.v1"
+  projector_subscription = var.names == null ? "${local.topic_name}.read-projector" : var.names.projector_subscription
+  dead_letter_topic      = var.names == null ? "${local.topic_name}.dlq" : var.names.dead_letter_topic
+  pubsub_agent           = "serviceAccount:service-${var.project_number}@gcp-sa-pubsub.iam.gserviceaccount.com"
 }
 
 resource "google_pubsub_topic" "events" {
@@ -62,13 +73,13 @@ resource "google_pubsub_topic" "events" {
 
 resource "google_pubsub_topic" "dead_letter" {
   project                    = var.project_id
-  name                       = "${local.topic_name}.dlq"
+  name                       = local.dead_letter_topic
   message_retention_duration = var.settings.message_retention_duration
 }
 
 resource "google_pubsub_subscription" "projector" {
   project                    = var.project_id
-  name                       = "${local.topic_name}.read-projector"
+  name                       = local.projector_subscription
   topic                      = google_pubsub_topic.events.id
   ack_deadline_seconds       = var.settings.ack_deadline_seconds
   message_retention_duration = var.settings.message_retention_duration
@@ -91,7 +102,7 @@ resource "google_pubsub_subscription" "projector" {
 
 resource "google_pubsub_subscription" "dead_letter_ops" {
   project                    = var.project_id
-  name                       = "${local.topic_name}.dlq.ops"
+  name                       = "${local.dead_letter_topic}.ops"
   topic                      = google_pubsub_topic.dead_letter.id
   ack_deadline_seconds       = 60
   message_retention_duration = var.settings.message_retention_duration
@@ -143,6 +154,11 @@ output "topic" {
 output "projector_subscription" {
   description = "Suscripción del proyector de lectura."
   value       = google_pubsub_subscription.projector.name
+}
+
+output "dead_letter_topic" {
+  description = "Tópico DLQ de la suscripción del proyector."
+  value       = google_pubsub_topic.dead_letter.name
 }
 
 output "dead_letter_subscription" {

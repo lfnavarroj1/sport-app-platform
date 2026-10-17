@@ -34,6 +34,7 @@ output "pubsub" {
     for domain, m in module.pubsub : domain => {
       topic                    = m.topic
       projector_subscription   = m.projector_subscription
+      dead_letter_topic        = m.dead_letter_topic
       dead_letter_subscription = m.dead_letter_subscription
     }
   }

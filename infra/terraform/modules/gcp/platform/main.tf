@@ -17,12 +17,22 @@ locals {
 
   # Almacenes lógicos por dominio (arquitectura/04-datos-y-persistencia.md).
   # El nombre del dominio es también el usuario PostgreSQL y el sufijo del tópico.
+  # pubsub_names fija la suscripción y la DLQ que consume el backend (CMP-002);
+  # null conserva los nombres por defecto del módulo pubsub.
   domains = {
-    usuarios       = { databases = ["usuarios_write", "usuarios_read"], cqrs = true }
-    afiliacion     = { databases = ["afiliacion"], cqrs = false }
-    servicios      = { databases = ["servicios"], cqrs = false }
-    entrenamientos = { databases = ["entrenamientos_write", "entrenamientos_read"], cqrs = true }
-    eventos        = { databases = ["eventos_write", "eventos_read"], cqrs = true }
+    usuarios   = { databases = ["usuarios_write", "usuarios_read"], cqrs = true, pubsub_names = null }
+    afiliacion = { databases = ["afiliacion"], cqrs = false, pubsub_names = null }
+    servicios  = { databases = ["servicios"], cqrs = false, pubsub_names = null }
+    entrenamientos = {
+      databases = ["entrenamientos_write", "entrenamientos_read"]
+      cqrs      = true
+      # HU010, CMP-003.
+      pubsub_names = {
+        projector_subscription = "proyector-entrenamientos-v1"
+        dead_letter_topic      = "sportapp.entrenamientos.proyeccion.dlq"
+      }
+    }
+    eventos = { databases = ["eventos_write", "eventos_read"], cqrs = true, pubsub_names = null }
   }
 
   # Cargas de GKE. ksa coincide con el nombre del Deployment en backend/deploy/k8s.
@@ -203,6 +213,7 @@ module "pubsub" {
   project_id     = var.project_id
   project_number = data.google_project.this.number
   domain         = each.key
+  names          = each.value.pubsub_names
   settings       = var.pubsub
 
   publisher_members = {
@@ -264,9 +275,10 @@ module "cloud_run" {
 module "observability" {
   source = "../observability"
 
-  project_id          = var.project_id
-  environment         = var.environment
-  notification_emails = var.alert_emails
+  project_id              = var.project_id
+  environment             = var.environment
+  notification_emails     = var.alert_emails
+  projector_subscriptions = [for m in module.pubsub : m.projector_subscription]
 
   depends_on = [module.project_services]
 }

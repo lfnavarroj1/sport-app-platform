@@ -100,6 +100,26 @@ run "infraestructura_sin_imagenes" {
     condition     = google_secret_manager_secret_iam_member.db_password["training-projector"].secret_id == "db-password-entrenamientos"
     error_message = "Cada carga debe leer únicamente el secreto de su dominio."
   }
+
+  assert {
+    condition = output.pubsub["entrenamientos"] == {
+      topic                    = "sportapp.entrenamientos.v1"
+      projector_subscription   = "proyector-entrenamientos-v1"
+      dead_letter_topic        = "sportapp.entrenamientos.proyeccion.dlq"
+      dead_letter_subscription = "sportapp.entrenamientos.proyeccion.dlq.ops"
+    }
+    error_message = "HU010 (CMP-003): Entrenamientos usa los nombres que consumen training-management-outbox-publisher y training-management-read-projector."
+  }
+
+  assert {
+    condition = output.pubsub["usuarios"] == {
+      topic                    = "sportapp.usuarios.v1"
+      projector_subscription   = "sportapp.usuarios.v1.read-projector"
+      dead_letter_topic        = "sportapp.usuarios.v1.dlq"
+      dead_letter_subscription = "sportapp.usuarios.v1.dlq.ops"
+    }
+    error_message = "Los dominios sin nombres de contrato conservan los nombres por defecto del módulo pubsub."
+  }
 }
 
 run "servicios_y_secretos_de_aplicacion" {
