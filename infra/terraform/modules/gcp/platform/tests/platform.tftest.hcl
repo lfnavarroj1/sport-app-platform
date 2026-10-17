@@ -92,7 +92,7 @@ run "infraestructura_sin_imagenes" {
   }
 
   assert {
-    condition     = length(google_secret_manager_secret_iam_member.db_password) == 11
+    condition     = length(google_secret_manager_secret_iam_member.db_password) == 13
     error_message = "Todas las cargas con dominio, y solo ellas, leen su contraseña."
   }
 
@@ -114,11 +114,49 @@ run "infraestructura_sin_imagenes" {
   assert {
     condition = output.pubsub["usuarios"] == {
       topic                    = "sportapp.usuarios.v1"
-      projector_subscription   = "sportapp.usuarios.v1.read-projector"
-      dead_letter_topic        = "sportapp.usuarios.v1.dlq"
-      dead_letter_subscription = "sportapp.usuarios.v1.dlq.ops"
+      projector_subscription   = "proyector-usuarios-v1"
+      dead_letter_topic        = "sportapp.usuarios.proyeccion.dlq"
+      dead_letter_subscription = "sportapp.usuarios.proyeccion.dlq.ops"
+    }
+    error_message = "HU001 (CMP-001): Usuarios usa los nombres que consume users-management-read-projector."
+  }
+
+  assert {
+    condition = output.pubsub["eventos"] == {
+      topic                    = "sportapp.eventos.v1"
+      projector_subscription   = "sportapp.eventos.v1.read-projector"
+      dead_letter_topic        = "sportapp.eventos.v1.dlq"
+      dead_letter_subscription = "sportapp.eventos.v1.dlq.ops"
     }
     error_message = "Los dominios sin nombres de contrato conservan los nombres por defecto del módulo pubsub."
+  }
+
+  assert {
+    condition = output.affiliation_pubsub == {
+      topic                       = "sportapp.afiliacion.v1"
+      free_plan_subscription      = "sportapp.afiliacion.alta-gratuita.v1"
+      free_plan_dead_letter_topic = "sportapp.afiliacion.alta-gratuita.dlq"
+      free_plan_dead_letter_ops   = "sportapp.afiliacion.alta-gratuita.dlq.ops"
+    }
+    error_message = "HU001 (ADR-024): tópico de Afiliación, alta gratuita y su DLQ con los nombres del contrato."
+  }
+
+  assert {
+    condition = (
+      keys(google_pubsub_topic_iam_member.affiliation_publishers) == ["affiliation-outbox"] &&
+      google_pubsub_topic_iam_member.affiliation_publishers["affiliation-outbox"].topic == "sportapp.afiliacion.v1" &&
+      google_pubsub_topic_iam_member.affiliation_publishers["affiliation-outbox"].role == "roles/pubsub.publisher"
+    )
+    error_message = "Solo affiliation-management-outbox-publisher publica en sportapp.afiliacion.v1."
+  }
+
+  assert {
+    condition = (
+      contains(keys(output.gke_workload_identities), "affiliation-management-free-plan-consumer") &&
+      contains(keys(output.gke_workload_identities), "affiliation-management-outbox-publisher") &&
+      google_secret_manager_secret_iam_member.db_password["affiliation-consumer"].secret_id == "db-password-afiliacion"
+    )
+    error_message = "Los workers de Afiliación tienen identidad propia y solo leen el secreto de su dominio."
   }
 }
 

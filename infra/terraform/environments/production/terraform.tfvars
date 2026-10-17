@@ -73,6 +73,8 @@ cloud_run_images = {}
 cloud_run_public_services = ["web", "bff-web", "bff-mobile"]
 
 cloud_run_env = {
+  # HU001: la misma versión de políticas que valida users-management.
+  web        = { REGISTRATION_POLICIES_VERSION = "sportapp-c108-c108plus.v1" }
   bff-web    = { LOG_LEVEL = "INFO" }
   bff-mobile = { LOG_LEVEL = "INFO" }
 }

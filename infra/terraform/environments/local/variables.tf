@@ -64,9 +64,25 @@ variable "log_level" {
 }
 
 variable "registration_policies_version" {
-  description = "Versión de políticas aceptadas al registrarse (users-management)."
+  description = "Versión de políticas aceptadas al registrarse; la leen users-management y web desde sportapp-runtime (HU001)."
   type        = string
-  default     = "local-dev"
+  default     = "sportapp-c108-c108plus.v1"
+
+  validation {
+    condition     = length(var.registration_policies_version) >= 1 && length(var.registration_policies_version) <= 32
+    error_message = "users-management admite de 1 a 32 caracteres en REGISTRATION_POLICIES_VERSION."
+  }
+}
+
+variable "affiliation_expected_catalog_version" {
+  description = "Catálogo de planes que Afiliación exige para quedar lista (ADR-024, ADR-036); cambia en el mismo release que la migración del catálogo."
+  type        = string
+  default     = "plans-2026-10-13.v1"
+
+  validation {
+    condition     = length(var.affiliation_expected_catalog_version) >= 1 && length(var.affiliation_expected_catalog_version) <= 40
+    error_message = "affiliation-management admite de 1 a 40 caracteres en AFFILIATION_EXPECTED_CATALOG_VERSION."
+  }
 }
 
 variable "health_data_consent_version" {

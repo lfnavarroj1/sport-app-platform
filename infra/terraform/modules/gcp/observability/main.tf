@@ -1,5 +1,5 @@
-# Alertas base del ambiente: CPU de Cloud SQL, mensajes en DLQ, atraso de
-# proyección CQRS y errores 5xx de Cloud Run. Los umbrales son iniciales y
+# Alertas base del ambiente: CPU de Cloud SQL, mensajes en DLQ, atraso de los
+# consumidores de Pub/Sub y errores 5xx de Cloud Run. Los umbrales son iniciales y
 # deben ajustarse con los SLO cuando se ratifiquen.
 
 terraform {
@@ -27,13 +27,13 @@ variable "notification_emails" {
   default     = []
 }
 
-variable "projector_subscriptions" {
-  description = "Suscripciones de los proyectores CQRS que vigila la alerta de atraso de proyección."
+variable "consumer_subscriptions" {
+  description = "Suscripciones de proyectores CQRS y consumidores de integración que vigila la alerta de atraso."
   type        = list(string)
 
   validation {
-    condition     = length(var.projector_subscriptions) > 0
-    error_message = "La alerta de atraso de proyección necesita al menos una suscripción."
+    condition     = length(var.consumer_subscriptions) > 0
+    error_message = "La alerta de atraso necesita al menos una suscripción."
   }
 }
 
@@ -76,17 +76,17 @@ locals {
       aligner    = "ALIGN_MAX"
       reducer    = null
       group_by   = []
-      doc_suffix = "Un proyector agotó los reintentos; inspeccionar la suscripción .dlq.ops."
+      doc_suffix = "Un proyector o consumidor agotó los reintentos; inspeccionar la suscripción .dlq.ops."
     }
     projection-lag = {
-      name       = "Atraso de proyección CQRS"
-      filter     = "resource.type = \"pubsub_subscription\" AND metric.type = \"pubsub.googleapis.com/subscription/oldest_unacked_message_age\" AND resource.label.subscription_id = one_of(${join(", ", formatlist("\"%s\"", var.projector_subscriptions))})"
+      name       = "Atraso de consumo en Pub/Sub"
+      filter     = "resource.type = \"pubsub_subscription\" AND metric.type = \"pubsub.googleapis.com/subscription/oldest_unacked_message_age\" AND resource.label.subscription_id = one_of(${join(", ", formatlist("\"%s\"", var.consumer_subscriptions))})"
       threshold  = var.projection_lag_seconds
       duration   = "300s"
       aligner    = "ALIGN_MAX"
       reducer    = null
       group_by   = []
-      doc_suffix = "El proyector de lectura no confirma mensajes a tiempo."
+      doc_suffix = "Un proyector o consumidor no confirma mensajes a tiempo; revisar sus logs y la DLQ."
     }
     cloudrun-5xx = {
       name       = "Errores 5xx en Cloud Run"
