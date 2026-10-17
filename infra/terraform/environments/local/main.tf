@@ -101,6 +101,7 @@ data "kustomization_overlay" "sportapp" {
       "LOG_LEVEL=${var.log_level}",
       "DATABASE_HOST=postgres",
       "REGISTRATION_POLICIES_VERSION=${var.registration_policies_version}",
+      "HEALTH_DATA_CONSENT_VERSION=${var.health_data_consent_version}",
       "USERS_MANAGEMENT_BASE_URL=http://users-management",
       "PUBSUB_PROJECT_ID=sportapp-local",
       "PUBSUB_EMULATOR_HOST=pubsub-emulator:8085",

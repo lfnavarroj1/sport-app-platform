@@ -1,6 +1,8 @@
 #!/bin/sh
-# Crea, por dominio CQRS, los mismos recursos que GCP:
-#   sportapp.<dominio>.v1, .dlq, .read-projector (con reintentos y DLQ) y .dlq.ops
+# Crea en el emulador los mismos recursos que GCP (infra/terraform/modules/gcp/pubsub).
+# Cada línea de PUBSUB_PROJECTIONS es "<tópico> <suscripción del proyector> <DLQ>"
+# y produce el tópico, la DLQ, la suscripción ordenada del proyector (10 entregas,
+# espera de 10 a 600 s) y la suscripción operativa <DLQ>.ops.
 # Una respuesta 409 significa que el recurso ya existe.
 set -eu
 
@@ -28,10 +30,14 @@ put() {
   esac
 }
 
-for domain in $PUBSUB_DOMAINS; do
-  topic="sportapp.${domain}.v1"
+printf '%s\n' "$PUBSUB_PROJECTIONS" | while read -r topic subscription dlq extra; do
+  [ -n "$topic" ] || continue
+  if [ -z "${dlq:-}" ] || [ -n "${extra:-}" ]; then
+    echo "línea inválida en PUBSUB_PROJECTIONS: ${topic} ${subscription:-} ${dlq:-} ${extra:-}" >&2
+    exit 1
+  fi
   put "topics/${topic}"
-  put "topics/${topic}.dlq"
-  put "subscriptions/${topic}.read-projector" "{\"topic\":\"${project}/topics/${topic}\",\"ackDeadlineSeconds\":60,\"enableMessageOrdering\":true,\"retryPolicy\":{\"minimumBackoff\":\"10s\",\"maximumBackoff\":\"600s\"},\"deadLetterPolicy\":{\"deadLetterTopic\":\"${project}/topics/${topic}.dlq\",\"maxDeliveryAttempts\":10}}"
-  put "subscriptions/${topic}.dlq.ops" "{\"topic\":\"${project}/topics/${topic}.dlq\",\"ackDeadlineSeconds\":60}"
+  put "topics/${dlq}"
+  put "subscriptions/${subscription}" "{\"topic\":\"${project}/topics/${topic}\",\"ackDeadlineSeconds\":60,\"enableMessageOrdering\":true,\"retryPolicy\":{\"minimumBackoff\":\"10s\",\"maximumBackoff\":\"600s\"},\"deadLetterPolicy\":{\"deadLetterTopic\":\"${project}/topics/${dlq}\",\"maxDeliveryAttempts\":10}}"
+  put "subscriptions/${dlq}.ops" "{\"topic\":\"${project}/topics/${dlq}\",\"ackDeadlineSeconds\":60}"
 done

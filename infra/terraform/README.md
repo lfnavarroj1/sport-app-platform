@@ -87,7 +87,15 @@ Desarrollo no usa GCP ni credenciales en la nube. Implementa la [arquitectura Te
 | Estado Terraform | `terraform.tfstate` local | bucket GCS en el proyecto de gestión |
 | Credenciales | ninguna | ADC con impersonación o WIF; nunca llaves JSON |
 
-En ambos ambientes se usan los mismos nombres: bases `usuarios_write/read`, `afiliacion`, `servicios`, `entrenamientos_write/read` y `eventos_write/read`, y tópicos `sportapp.{usuarios,entrenamientos,eventos}.v1` con `.read-projector`, `.dlq` y `.dlq.ops`. Gracias a eso, el código que funciona en local funciona igual en producción.
+En ambos ambientes se usan los mismos nombres: bases `usuarios_write/read`, `afiliacion`, `servicios`, `entrenamientos_write/read` y `eventos_write/read`, y tópicos `sportapp.{usuarios,entrenamientos,eventos}.v1`. Gracias a eso, el código que funciona en local funciona igual en producción. Cada tópico tiene una suscripción ordenada para su proyector (10 entregas, espera de 10 a 600 s), una DLQ y una suscripción operativa `<DLQ>.ops`:
+
+| Dominio | Suscripción del proyector | DLQ |
+| --- | --- | --- |
+| Entrenamientos (HU010, CMP-003) | `proyector-entrenamientos-v1` | `sportapp.entrenamientos.proyeccion.dlq` |
+| Usuarios | `sportapp.usuarios.v1.read-projector` | `sportapp.usuarios.v1.dlq` |
+| Eventos masivos | `sportapp.eventos.v1.read-projector` | `sportapp.eventos.v1.dlq` |
+
+Entrenamientos usa los nombres que consume el backend (`training_management/settings.py`). Usuarios y eventos conservan los nombres anteriores, que no coinciden con los de sus proyectores (`proyector-usuarios-v1` y `proyector-eventos-v1`); alinearlos corresponde a sus propias historias.
 
 ```mermaid
 flowchart LR
@@ -118,8 +126,8 @@ flowchart LR
 infra/
 ├── kubernetes/local/              # dependencias compartidas de desarrollo (propiedad de la plataforma)
 │   ├── postgres.yaml              #   PostgreSQL + script que crea bases y roles
-│   ├── pubsub-emulator.yaml       #   emulador de Pub/Sub
-│   ├── pubsub-init.yaml           #   Job que crea tópicos, suscripciones y DLQ
+│   ├── pubsub-emulator.yaml       #   emulador de Pub/Sub; al arrancar crea tópicos, suscripciones y DLQ
+│   ├── pubsub-init/               #   script que crea esos recursos
 │   └── access.yaml                #   puertos en localhost
 └── terraform/
     ├── environments/
@@ -337,7 +345,7 @@ PostgreSQL, el emulador, los tópicos y los puertos de acceso están en `infra/k
 
 | Quiero… | Edito |
 | --- | --- |
-| Agregar un tópico o un dominio CQRS | `PUBSUB_DOMAINS` en `pubsub-init.yaml` (y el módulo GCP `pubsub` para producción) |
+| Agregar un tópico o un dominio CQRS | una línea `<tópico> <suscripción> <DLQ>` en `PUBSUB_PROJECTIONS` de `pubsub-emulator.yaml` y, para producción, el dominio en `modules/gcp/platform/main.tf` (`pubsub_names` si el contrato fija otros nombres) |
 | Agregar una base o un rol | `postgres-init/01-create-domain-databases.sh` y `postgres.yaml`; luego destruir y recrear, porque el script solo corre con el volumen vacío |
 | Cambiar un puerto de `localhost` | `access.yaml` |
 | Cambiar el nivel de log | `log_level` en `local.auto.tfvars` |
@@ -677,13 +685,17 @@ terraform fmt -check -recursive infra\terraform
 cd infra\terraform\environments\local;      terraform init; terraform test
 cd ..\production;                           terraform init -backend=false; terraform test
 cd ..\..\modules\gcp\platform;              terraform init -backend=false; terraform test
+cd ..\pubsub;                               terraform init -backend=false; terraform test
+cd ..\observability;                        terraform init -backend=false; terraform test
 ```
 
 | Prueba | Verifica |
 | --- | --- |
 | `environments/local/tests` | solo `docker-desktop` es aceptado y la ruta del backend debe existir |
-| `environments/production/tests` | el `terraform.tfvars` de producción produce un plan válido con las protecciones obligatorias |
-| `modules/gcp/platform/tests` | aislamiento de secretos por dominio, tópicos solo en dominios CQRS, rechazo de imágenes por tag y de secretos no declarados, reglas de producción |
+| `environments/production/tests` | el `terraform.tfvars` de producción produce un plan válido con las protecciones obligatorias y la suscripción de entrenamientos con 10 entregas y espera de 10 a 600 s |
+| `modules/gcp/platform/tests` | aislamiento de secretos por dominio, tópicos solo en dominios CQRS, nombres de Pub/Sub por dominio, rechazo de imágenes por tag y de secretos no declarados, reglas de producción |
+| `modules/gcp/pubsub/tests` | nombres de contrato de entrenamientos, orden, 10 entregas, espera de 10 a 600 s, DLQ e IAM mínimo de publicador y proyector |
+| `modules/gcp/observability/tests` | la alerta de atraso vigila exactamente las suscripciones de los proyectores y la de DLQ todas las `.dlq.ops` |
 
 ## 10. Solución de problemas
 
@@ -695,6 +707,7 @@ cd ..\..\modules\gcp\platform;              terraform init -backend=false; terra
 | El código nuevo no aparece | se reconstruyó con el mismo tag `local` | usa un tag nuevo ([5.1](#51-cambió-el-código-del-backend)) |
 | `apply` espera hasta 10 minutos y falla | un Deployment no llega a estar listo | revisa `kubectl … logs deployment/<componente>` |
 | `users-management` queda en `CreateContainerConfigError` por `sportapp-users-jwt` | se aplicó un plan anterior a la incorporación del Secret JWT | ejecuta `terraform init -upgrade`, crea un plan nuevo y aplícalo |
+| Un proyector o consumidor en `CrashLoopBackOff` registra `started`, `stopping` y `stopped` sin error | su suscripción no existe en el emulador | compara el nombre del log con `PUBSUB_PROJECTIONS` en `pubsub-emulator.yaml`; el emulador vuelve a crear sus recursos cada vez que arranca |
 | `bind: address already in use` en un acceso | otro programa usa 18080, 18081, 15432 o 18085 | libera el puerto o cámbialo en `access.yaml` |
 | El navegador bloquea las llamadas del frontend | el origen no está en `CORS_ALLOWED_ORIGINS` | agrégalo al ConfigMap en `environments/local/main.tf` (local) o a `cloud_run_env.bff-web` (producción) |
 | `apply` de un ambiente creado antes de las dos fases falla al mover Deployments | el estado guarda las cargas con la dirección anterior (`p1`) | `terraform destroy` y `apply`, o mover cada carga con `terraform state mv` a `kustomization_resource.p1_workloads` |

@@ -27,6 +27,16 @@ variable "notification_emails" {
   default     = []
 }
 
+variable "projector_subscriptions" {
+  description = "Suscripciones de los proyectores CQRS que vigila la alerta de atraso de proyección."
+  type        = list(string)
+
+  validation {
+    condition     = length(var.projector_subscriptions) > 0
+    error_message = "La alerta de atraso de proyección necesita al menos una suscripción."
+  }
+}
+
 variable "projection_lag_seconds" {
   description = "Antigüedad máxima tolerada del mensaje más viejo sin ACK del proyector."
   type        = number
@@ -70,7 +80,7 @@ locals {
     }
     projection-lag = {
       name       = "Atraso de proyección CQRS"
-      filter     = "resource.type = \"pubsub_subscription\" AND metric.type = \"pubsub.googleapis.com/subscription/oldest_unacked_message_age\" AND resource.label.subscription_id = monitoring.regex.full_match(\".*[.]read-projector\")"
+      filter     = "resource.type = \"pubsub_subscription\" AND metric.type = \"pubsub.googleapis.com/subscription/oldest_unacked_message_age\" AND resource.label.subscription_id = one_of(${join(", ", formatlist("\"%s\"", var.projector_subscriptions))})"
       threshold  = var.projection_lag_seconds
       duration   = "300s"
       aligner    = "ALIGN_MAX"

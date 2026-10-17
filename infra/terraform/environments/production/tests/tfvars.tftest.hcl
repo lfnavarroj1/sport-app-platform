@@ -19,4 +19,16 @@ variables {
 
 run "terraform_tfvars_es_valido" {
   command = plan
+
+  # HU010 (CMP-003): proyector de entrenamientos con 10 entregas y espera de 10 a 600 s.
+  assert {
+    condition = (
+      output.pubsub["entrenamientos"].projector_subscription == "proyector-entrenamientos-v1" &&
+      output.pubsub["entrenamientos"].dead_letter_topic == "sportapp.entrenamientos.proyeccion.dlq" &&
+      var.pubsub.max_delivery_attempts == 10 &&
+      var.pubsub.minimum_backoff == "10s" &&
+      var.pubsub.maximum_backoff == "600s"
+    )
+    error_message = "Producción debe crear la suscripción y la DLQ de entrenamientos con 10 entregas y espera de 10 a 600 s."
+  }
 }
