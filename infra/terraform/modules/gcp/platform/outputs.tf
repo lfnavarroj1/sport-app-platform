@@ -40,6 +40,16 @@ output "pubsub" {
   }
 }
 
+output "affiliation_pubsub" {
+  description = "Mensajería de Afiliación (ADR-024): tópico de integración y alta gratuita."
+  value = {
+    topic                       = google_pubsub_topic.affiliation.name
+    free_plan_subscription      = module.free_plan_consumer.subscription
+    free_plan_dead_letter_topic = module.free_plan_consumer.dead_letter_topic
+    free_plan_dead_letter_ops   = module.free_plan_consumer.dead_letter_subscription
+  }
+}
+
 output "cloud_run_urls" {
   description = "URL de cada servicio desplegado."
   value       = { for name, m in module.cloud_run : name => m.uri }

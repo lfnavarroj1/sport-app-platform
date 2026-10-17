@@ -23,6 +23,11 @@ output "pubsub" {
   value       = module.platform.pubsub
 }
 
+output "affiliation_pubsub" {
+  description = "Mensajería de Afiliación (ADR-024): tópico de integración y alta gratuita."
+  value       = module.platform.affiliation_pubsub
+}
+
 output "cloud_run_urls" {
   description = "URL de cada servicio Cloud Run."
   value       = module.platform.cloud_run_urls

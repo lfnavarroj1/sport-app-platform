@@ -17,12 +17,22 @@ locals {
 
   # Almacenes lógicos por dominio (arquitectura/04-datos-y-persistencia.md).
   # El nombre del dominio es también el usuario PostgreSQL y el sufijo del tópico.
-  # pubsub_names fija la suscripción y la DLQ que consume el backend (CMP-002);
-  # null conserva los nombres por defecto del módulo pubsub.
+  # pubsub_names fija la suscripción y la DLQ que consume el backend (CMP-002) y
+  # pubsub_max_delivery_attempts las entregas de su perfil; null usa los valores
+  # por defecto del módulo pubsub y de var.pubsub.
   domains = {
-    usuarios   = { databases = ["usuarios_write", "usuarios_read"], cqrs = true, pubsub_names = null }
-    afiliacion = { databases = ["afiliacion"], cqrs = false, pubsub_names = null }
-    servicios  = { databases = ["servicios"], cqrs = false, pubsub_names = null }
+    usuarios = {
+      databases = ["usuarios_write", "usuarios_read"]
+      cqrs      = true
+      # HU001, CMP-001.
+      pubsub_names = {
+        projector_subscription = "proyector-usuarios-v1"
+        dead_letter_topic      = "sportapp.usuarios.proyeccion.dlq"
+      }
+      pubsub_max_delivery_attempts = 5
+    }
+    afiliacion = { databases = ["afiliacion"], cqrs = false, pubsub_names = null, pubsub_max_delivery_attempts = null }
+    servicios  = { databases = ["servicios"], cqrs = false, pubsub_names = null, pubsub_max_delivery_attempts = null }
     entrenamientos = {
       databases = ["entrenamientos_write", "entrenamientos_read"]
       cqrs      = true
@@ -31,24 +41,32 @@ locals {
         projector_subscription = "proyector-entrenamientos-v1"
         dead_letter_topic      = "sportapp.entrenamientos.proyeccion.dlq"
       }
+      pubsub_max_delivery_attempts = null
     }
-    eventos = { databases = ["eventos_write", "eventos_read"], cqrs = true, pubsub_names = null }
+    eventos = { databases = ["eventos_write", "eventos_read"], cqrs = true, pubsub_names = null, pubsub_max_delivery_attempts = null }
   }
+
+  # Afiliación no es CQRS (ADR-024): consume usuario.registrado.v1 del tópico de
+  # Usuarios y publica suscripcion.activada.v1 en su tópico de integración. Este
+  # tópico no tiene suscripción mientras no exista un consumidor aprobado.
+  affiliation_topic = "sportapp.afiliacion.v1"
 
   # Cargas de GKE. ksa coincide con el nombre del Deployment en backend/deploy/k8s.
   gke_workloads = {
-    users-api          = { ksa = "users-management", domain = "usuarios", kind = "api" }
-    users-outbox       = { ksa = "users-management-outbox-publisher", domain = "usuarios", kind = "outbox" }
-    users-projector    = { ksa = "users-management-read-projector", domain = "usuarios", kind = "projector" }
-    affiliation-api    = { ksa = "affiliation-management", domain = "afiliacion", kind = "api" }
-    services-api       = { ksa = "complementary-services", domain = "servicios", kind = "api" }
-    training-api       = { ksa = "training-management", domain = "entrenamientos", kind = "api" }
-    training-outbox    = { ksa = "training-management-outbox-publisher", domain = "entrenamientos", kind = "outbox" }
-    training-projector = { ksa = "training-management-read-projector", domain = "entrenamientos", kind = "projector" }
-    events-api         = { ksa = "events-management", domain = "eventos", kind = "api" }
-    events-outbox      = { ksa = "events-management-outbox-publisher", domain = "eventos", kind = "outbox" }
-    events-projector   = { ksa = "events-management-read-projector", domain = "eventos", kind = "projector" }
-    third-party        = { ksa = "third-party-management", domain = null, kind = "api" }
+    users-api            = { ksa = "users-management", domain = "usuarios", kind = "api" }
+    users-outbox         = { ksa = "users-management-outbox-publisher", domain = "usuarios", kind = "outbox" }
+    users-projector      = { ksa = "users-management-read-projector", domain = "usuarios", kind = "projector" }
+    affiliation-api      = { ksa = "affiliation-management", domain = "afiliacion", kind = "api" }
+    affiliation-consumer = { ksa = "affiliation-management-free-plan-consumer", domain = "afiliacion", kind = "consumer" }
+    affiliation-outbox   = { ksa = "affiliation-management-outbox-publisher", domain = "afiliacion", kind = "outbox" }
+    services-api         = { ksa = "complementary-services", domain = "servicios", kind = "api" }
+    training-api         = { ksa = "training-management", domain = "entrenamientos", kind = "api" }
+    training-outbox      = { ksa = "training-management-outbox-publisher", domain = "entrenamientos", kind = "outbox" }
+    training-projector   = { ksa = "training-management-read-projector", domain = "entrenamientos", kind = "projector" }
+    events-api           = { ksa = "events-management", domain = "eventos", kind = "api" }
+    events-outbox        = { ksa = "events-management-outbox-publisher", domain = "eventos", kind = "outbox" }
+    events-projector     = { ksa = "events-management-read-projector", domain = "eventos", kind = "projector" }
+    third-party          = { ksa = "third-party-management", domain = null, kind = "api" }
   }
 
   # Servicios de Cloud Run. El puerto web es provisional hasta que exista su imagen.
@@ -210,11 +228,12 @@ module "pubsub" {
   source   = "../pubsub"
   for_each = { for name, d in local.domains : name => d if d.cqrs }
 
-  project_id     = var.project_id
-  project_number = data.google_project.this.number
-  domain         = each.key
-  names          = each.value.pubsub_names
-  settings       = var.pubsub
+  project_id            = var.project_id
+  project_number        = data.google_project.this.number
+  domain                = each.key
+  names                 = each.value.pubsub_names
+  max_delivery_attempts = each.value.pubsub_max_delivery_attempts
+  settings              = var.pubsub
 
   publisher_members = {
     for key, w in local.gke_workloads : key => module.iam.members[key]
@@ -226,6 +245,43 @@ module "pubsub" {
   }
 
   depends_on = [module.project_services]
+}
+
+# HU001 (ADR-024): mensajería de Afiliación. Solo affiliation-outbox publica en
+# el tópico de integración y solo affiliation-consumer consume el alta gratuita.
+resource "google_pubsub_topic" "affiliation" {
+  project                    = var.project_id
+  name                       = local.affiliation_topic
+  message_retention_duration = var.pubsub.message_retention_duration
+
+  depends_on = [module.project_services]
+}
+
+resource "google_pubsub_topic_iam_member" "affiliation_publishers" {
+  for_each = { for key, w in local.gke_workloads : key => module.iam.members[key] if w.domain == "afiliacion" && w.kind == "outbox" }
+
+  project = var.project_id
+  topic   = google_pubsub_topic.affiliation.name
+  role    = "roles/pubsub.publisher"
+  member  = each.value
+}
+
+module "free_plan_consumer" {
+  source = "../pubsub-consumer"
+
+  project_id        = var.project_id
+  project_number    = data.google_project.this.number
+  topic             = module.pubsub["usuarios"].topic
+  subscription      = "sportapp.afiliacion.alta-gratuita.v1"
+  dead_letter_topic = "sportapp.afiliacion.alta-gratuita.dlq"
+  # R-19 (ADR-034): el tópico de Usuarios también transporta perfil.*.
+  filter   = "attributes.event_type = \"usuario.registrado.v1\""
+  settings = var.pubsub
+
+  subscriber_members = {
+    for key, w in local.gke_workloads : key => module.iam.members[key]
+    if w.domain == "afiliacion" && w.kind == "consumer"
+  }
 }
 
 module "app_secrets" {
@@ -275,10 +331,13 @@ module "cloud_run" {
 module "observability" {
   source = "../observability"
 
-  project_id              = var.project_id
-  environment             = var.environment
-  notification_emails     = var.alert_emails
-  projector_subscriptions = [for m in module.pubsub : m.projector_subscription]
+  project_id          = var.project_id
+  environment         = var.environment
+  notification_emails = var.alert_emails
+  consumer_subscriptions = concat(
+    [for m in module.pubsub : m.projector_subscription],
+    [module.free_plan_consumer.subscription],
+  )
 
   depends_on = [module.project_services]
 }

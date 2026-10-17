@@ -102,6 +102,7 @@ data "kustomization_overlay" "sportapp" {
       "DATABASE_HOST=postgres",
       "REGISTRATION_POLICIES_VERSION=${var.registration_policies_version}",
       "HEALTH_DATA_CONSENT_VERSION=${var.health_data_consent_version}",
+      "AFFILIATION_EXPECTED_CATALOG_VERSION=${var.affiliation_expected_catalog_version}",
       "USERS_MANAGEMENT_BASE_URL=http://users-management",
       "PUBSUB_PROJECT_ID=sportapp-local",
       "PUBSUB_EMULATOR_HOST=pubsub-emulator:8085",
@@ -123,6 +124,36 @@ data "kustomization_overlay" "sportapp" {
   images {
     name    = "sportapp/web"
     new_tag = var.frontend_image_tag
+  }
+
+  # El catálogo esperado lo fija el ambiente desde sportapp-runtime (ADR-036),
+  # en lugar del valor que trae el manifiesto del backend.
+  dynamic "patches" {
+    for_each = var.deploy_backend ? [1] : []
+    content {
+      target {
+        kind = "Deployment"
+        name = "affiliation-management"
+      }
+      patch = <<-EOT
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: affiliation-management
+        spec:
+          template:
+            spec:
+              containers:
+                - name: app
+                  env:
+                    - name: AFFILIATION_EXPECTED_CATALOG_VERSION
+                      value: null
+                      valueFrom:
+                        configMapKeyRef:
+                          name: sportapp-runtime
+                          key: AFFILIATION_EXPECTED_CATALOG_VERSION
+      EOT
+    }
   }
 
   # Los manifiestos de backend y frontend están fuera de este repositorio.
@@ -147,10 +178,17 @@ data "kustomization_overlay" "sportapp" {
 # Services, después las cargas (Deployments, StatefulSets y Jobs). Si van juntas,
 # las cargas que esperan su rollout pueden ocupar todos los cupos de paralelismo
 # de Terraform y dejar en cola el ConfigMap que necesitan para arrancar.
+#
+# Afiliación tiene una fase propia (ADR-024): su migración de catálogo debe
+# terminar antes de habilitar sus réplicas, y el proveedor no espera Jobs.
 locals {
   ids_p1          = data.kustomization_overlay.sportapp.ids_prio[1]
   ids_p1_workload = toset([for id in local.ids_p1 : id if can(regex("^(apps|batch)/", id))])
   ids_p1_config   = setsubtract(local.ids_p1, local.ids_p1_workload)
+
+  ids_affiliation_migrations = toset([for id in local.ids_p1_workload : id if can(regex("^batch/Job/[^/]+/affiliation-management-migrate-", id))])
+  ids_affiliation_workloads  = toset([for id in local.ids_p1_workload : id if can(regex("^apps/Deployment/[^/]+/affiliation-management(-|$)", id))])
+  ids_other_workloads        = setsubtract(local.ids_p1_workload, setunion(local.ids_affiliation_migrations, local.ids_affiliation_workloads))
 }
 
 resource "kustomization_resource" "p0" {
@@ -173,7 +211,7 @@ resource "kustomization_resource" "p1" {
 }
 
 resource "kustomization_resource" "p1_workloads" {
-  for_each = local.ids_p1_workload
+  for_each = local.ids_other_workloads
 
   manifest = data.kustomization_overlay.sportapp.manifests[each.value]
   wait     = var.wait_for_rollout
@@ -186,10 +224,75 @@ resource "kustomization_resource" "p1_workloads" {
   depends_on = [kustomization_resource.p1]
 }
 
+# El Job reintenta con espera creciente mientras PostgreSQL termina de iniciar.
+resource "kustomization_resource" "affiliation_migrations" {
+  for_each = local.ids_affiliation_migrations
+
+  manifest = data.kustomization_overlay.sportapp.manifests[each.value]
+
+  depends_on = [kustomization_resource.p1]
+}
+
+# Se repite cada vez que el Job cambia (por ejemplo, un tag nuevo lo reemplaza).
+resource "terraform_data" "affiliation_migrations_complete" {
+  for_each = local.ids_affiliation_migrations
+
+  triggers_replace = kustomization_resource.affiliation_migrations[each.key].manifest
+
+  # KUBECONFIG por entorno: evita comillas, que cmd (Windows) y sh tratan distinto.
+  provisioner "local-exec" {
+    command = "kubectl --context ${var.kube_context} --namespace ${local.namespace} wait --for=condition=complete --timeout=10m job/${split("/", each.key)[3]}"
+    environment = {
+      KUBECONFIG = pathexpand(var.kubeconfig_path)
+    }
+  }
+}
+
+resource "kustomization_resource" "affiliation_workloads" {
+  for_each = local.ids_affiliation_workloads
+
+  manifest = data.kustomization_overlay.sportapp.manifests[each.value]
+  wait     = var.wait_for_rollout
+
+  timeouts {
+    create = "10m"
+    update = "10m"
+  }
+
+  depends_on = [
+    kustomization_resource.p1,
+    terraform_data.affiliation_migrations_complete,
+  ]
+}
+
+# Estados creados antes de la fase de Afiliación: mover, no recrear.
+moved {
+  from = kustomization_resource.p1_workloads["batch/Job/sportapp-local/affiliation-management-migrate-main"]
+  to   = kustomization_resource.affiliation_migrations["batch/Job/sportapp-local/affiliation-management-migrate-main"]
+}
+
+moved {
+  from = kustomization_resource.p1_workloads["apps/Deployment/sportapp-local/affiliation-management"]
+  to   = kustomization_resource.affiliation_workloads["apps/Deployment/sportapp-local/affiliation-management"]
+}
+
+moved {
+  from = kustomization_resource.p1_workloads["apps/Deployment/sportapp-local/affiliation-management-free-plan-consumer"]
+  to   = kustomization_resource.affiliation_workloads["apps/Deployment/sportapp-local/affiliation-management-free-plan-consumer"]
+}
+
+moved {
+  from = kustomization_resource.p1_workloads["apps/Deployment/sportapp-local/affiliation-management-outbox-publisher"]
+  to   = kustomization_resource.affiliation_workloads["apps/Deployment/sportapp-local/affiliation-management-outbox-publisher"]
+}
+
 resource "kustomization_resource" "p2" {
   for_each = data.kustomization_overlay.sportapp.ids_prio[2]
 
   manifest = data.kustomization_overlay.sportapp.manifests[each.value]
 
-  depends_on = [kustomization_resource.p1_workloads]
+  depends_on = [
+    kustomization_resource.p1_workloads,
+    kustomization_resource.affiliation_workloads,
+  ]
 }

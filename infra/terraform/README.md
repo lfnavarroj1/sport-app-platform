@@ -87,15 +87,18 @@ Desarrollo no usa GCP ni credenciales en la nube. Implementa la [arquitectura Te
 | Estado Terraform | `terraform.tfstate` local | bucket GCS en el proyecto de gestión |
 | Credenciales | ninguna | ADC con impersonación o WIF; nunca llaves JSON |
 
-En ambos ambientes se usan los mismos nombres: bases `usuarios_write/read`, `afiliacion`, `servicios`, `entrenamientos_write/read` y `eventos_write/read`, y tópicos `sportapp.{usuarios,entrenamientos,eventos}.v1`. Gracias a eso, el código que funciona en local funciona igual en producción. Cada tópico tiene una suscripción ordenada para su proyector (10 entregas, espera de 10 a 600 s), una DLQ y una suscripción operativa `<DLQ>.ops`:
+En ambos ambientes se usan los mismos nombres: bases `usuarios_write/read`, `afiliacion`, `servicios`, `entrenamientos_write/read` y `eventos_write/read`, y tópicos `sportapp.{usuarios,afiliacion,entrenamientos,eventos}.v1`. Gracias a eso, el código que funciona en local funciona igual en producción. Cada suscripción entrega en orden, espera de 10 a 600 s entre reintentos y tiene una DLQ con su suscripción operativa `<DLQ>.ops`:
 
-| Dominio | Suscripción del proyector | DLQ |
-| --- | --- | --- |
-| Entrenamientos (HU010, CMP-003) | `proyector-entrenamientos-v1` | `sportapp.entrenamientos.proyeccion.dlq` |
-| Usuarios | `sportapp.usuarios.v1.read-projector` | `sportapp.usuarios.v1.dlq` |
-| Eventos masivos | `sportapp.eventos.v1.read-projector` | `sportapp.eventos.v1.dlq` |
+| Consumidor | Tópico | Suscripción | DLQ | Entregas |
+| --- | --- | --- | --- | --- |
+| `users-management-read-projector` (HU001, CMP-001) | `sportapp.usuarios.v1` | `proyector-usuarios-v1` | `sportapp.usuarios.proyeccion.dlq` | 5 |
+| `affiliation-management-free-plan-consumer` (HU001, ADR-024) | `sportapp.usuarios.v1`, solo `attributes.event_type = "usuario.registrado.v1"` | `sportapp.afiliacion.alta-gratuita.v1` | `sportapp.afiliacion.alta-gratuita.dlq` | 10 |
+| `training-management-read-projector` (HU010, CMP-003) | `sportapp.entrenamientos.v1` | `proyector-entrenamientos-v1` | `sportapp.entrenamientos.proyeccion.dlq` | 10 |
+| `events-management-read-projector` | `sportapp.eventos.v1` | `sportapp.eventos.v1.read-projector` | `sportapp.eventos.v1.dlq` | 10 |
 
-Entrenamientos usa los nombres que consume el backend (`training_management/settings.py`). Usuarios y eventos conservan los nombres anteriores, que no coinciden con los de sus proyectores (`proyector-usuarios-v1` y `proyector-eventos-v1`); alinearlos corresponde a sus propias historias.
+Los nombres son los que consume el backend (`<servicio>/settings.py`). `sportapp.afiliacion.v1` recibe `suscripcion.activada.v1` de `affiliation-management-outbox-publisher` y no tiene suscripción mientras no exista un consumidor aprobado (ADR-024). Eventos conserva los nombres anteriores, que no coinciden con los de su proyector (`proyector-eventos-v1`); alinearlos corresponde a su propia historia.
+
+El ConfigMap `sportapp-runtime` publica la versión de políticas (`REGISTRATION_POLICIES_VERSION`, que leen `users-management` y `web`) y el catálogo que Afiliación exige para quedar lista (`AFFILIATION_EXPECTED_CATALOG_VERSION`). Los valores aprobados están en `variables.tf` (`registration_policies_version` y `affiliation_expected_catalog_version`). El catálogo se cambia en el mismo release que trae su migración (ADR-036).
 
 ```mermaid
 flowchart LR
@@ -203,7 +206,7 @@ El primer `apply` tarda alrededor de un minuto. Crea:
 - los componentes del backend: APIs, publicadores outbox, BFF y Jobs de migración;
 - los accesos en `localhost` descritos en [4.5](#45-usar-el-ambiente).
 
-Los primeros intentos de las migraciones fallan mientras PostgreSQL arranca y se reintentan solos. Es normal.
+Los primeros intentos de las migraciones fallan mientras PostgreSQL arranca y se reintentan solos. Es normal. Las réplicas de Afiliación se crean después de que su migración termina (`kubectl wait` desde Terraform), porque su readiness exige el catálogo completo (ADR-024).
 
 ### 4.4 Verificar
 
@@ -219,11 +222,11 @@ Resultado esperado: todos los pods en `Running`, todos los Jobs en `Complete` y 
 Para una prueba de punta a punta, registra un usuario sintético a través del BFF web:
 
 ```powershell
-$body = '{"full_name":"Prueba Local","email":"prueba.local@example.com","password":"contrasena-de-prueba-123","actor_type":"athlete","accepted_policies_version":"local-dev"}'
+$body = '{"full_name":"Prueba Local","email":"prueba.local@example.com","password":"contrasena-de-prueba-123","actor_type":"athlete","accepted_policies_version":"sportapp-c108-c108plus.v1"}'
 curl.exe -X POST http://localhost:18080/v1/users -H "Content-Type: application/json" -H "Idempotency-Key: $([guid]::NewGuid())" -d $body
 ```
 
-Debe responder `201`. El evento `usuario.registrado.v1` queda en la suscripción `sportapp.usuarios.v1.read-projector` del emulador.
+Debe responder `201`. `users-management-read-projector` proyecta el usuario y `affiliation-management-free-plan-consumer` le crea la suscripción `FREE`; tras iniciar sesión, `GET /v1/me/capabilities` responde `PROVISIONING` mientras tanto y luego `ACTIVE`.
 
 ### 4.5 Usar el ambiente
 
@@ -345,7 +348,7 @@ PostgreSQL, el emulador, los tópicos y los puertos de acceso están en `infra/k
 
 | Quiero… | Edito |
 | --- | --- |
-| Agregar un tópico o un dominio CQRS | una línea `<tópico> <suscripción> <DLQ>` en `PUBSUB_PROJECTIONS` de `pubsub-emulator.yaml` y, para producción, el dominio en `modules/gcp/platform/main.tf` (`pubsub_names` si el contrato fija otros nombres) |
+| Agregar un tópico o una suscripción | `PUBSUB_TOPICS` o una línea `<suscripción> <tópico> <DLQ> <entregas> [filtro]` en `PUBSUB_SUBSCRIPTIONS` de `pubsub-emulator.yaml` y, para producción, `modules/gcp/platform/main.tf` (dominio CQRS con `pubsub_names`, o un módulo `pubsub-consumer`) |
 | Agregar una base o un rol | `postgres-init/01-create-domain-databases.sh` y `postgres.yaml`; luego destruir y recrear, porque el script solo corre con el volumen vacío |
 | Cambiar un puerto de `localhost` | `access.yaml` |
 | Cambiar el nivel de log | `log_level` en `local.auto.tfvars` |
@@ -664,7 +667,8 @@ Terraform crea el clúster y la identidad de cada carga, pero no aplica manifies
 - crear el namespace `sportapp` y una KSA por carga, anotada con la salida `gke_workload_identities` (`iam.gke.io/gcp-service-account`);
 - usar `DATABASE_HOST` = `cloud_sql.private_ip`, las contraseñas `db-password-<dominio>` mediante el complemento Secret Manager de GKE y `PUBSUB_PROJECT_ID` = proyecto, sin emulador;
 - exponer con un Service `LoadBalancer` interno las APIs que llaman los BFF;
-- fijar las imágenes por digest (`images[].digest` en Kustomize) y ejecutar las migraciones antes que las cargas.
+- fijar las imágenes por digest (`images[].digest` en Kustomize) y ejecutar las migraciones antes que las cargas; en particular, habilitar las réplicas de Afiliación solo cuando su migración de catálogo haya terminado (ADR-024);
+- tomar `REGISTRATION_POLICIES_VERSION` y `AFFILIATION_EXPECTED_CATALOG_VERSION` de la configuración del ambiente, con los mismos valores que la composición local.
 
 ### 8.5 Resumen por evento
 
@@ -686,16 +690,18 @@ cd infra\terraform\environments\local;      terraform init; terraform test
 cd ..\production;                           terraform init -backend=false; terraform test
 cd ..\..\modules\gcp\platform;              terraform init -backend=false; terraform test
 cd ..\pubsub;                               terraform init -backend=false; terraform test
+cd ..\pubsub-consumer;                      terraform init -backend=false; terraform test
 cd ..\observability;                        terraform init -backend=false; terraform test
 ```
 
 | Prueba | Verifica |
 | --- | --- |
-| `environments/local/tests` | solo `docker-desktop` es aceptado y la ruta del backend debe existir |
-| `environments/production/tests` | el `terraform.tfvars` de producción produce un plan válido con las protecciones obligatorias y la suscripción de entrenamientos con 10 entregas y espera de 10 a 600 s |
-| `modules/gcp/platform/tests` | aislamiento de secretos por dominio, tópicos solo en dominios CQRS, nombres de Pub/Sub por dominio, rechazo de imágenes por tag y de secretos no declarados, reglas de producción |
-| `modules/gcp/pubsub/tests` | nombres de contrato de entrenamientos, orden, 10 entregas, espera de 10 a 600 s, DLQ e IAM mínimo de publicador y proyector |
-| `modules/gcp/observability/tests` | la alerta de atraso vigila exactamente las suscripciones de los proyectores y la de DLQ todas las `.dlq.ops` |
+| `environments/local/tests` | solo `docker-desktop` es aceptado, la ruta del backend debe existir, `sportapp-runtime` publica la versión de políticas y el catálogo aprobados y Afiliación toma el catálogo de allí |
+| `environments/production/tests` | el `terraform.tfvars` de producción produce un plan válido con las protecciones obligatorias, la mensajería de Usuarios, Afiliación y Entrenamientos y la versión de políticas de la web |
+| `modules/gcp/platform/tests` | aislamiento de secretos por dominio, tópicos solo en dominios CQRS, nombres de Pub/Sub por dominio, tópico y alta gratuita de Afiliación con IAM mínimo, rechazo de imágenes por tag y de secretos no declarados, reglas de producción |
+| `modules/gcp/pubsub/tests` | nombres de contrato, orden, entregas por dominio (5 en Usuarios, 10 por defecto), espera de 10 a 600 s, DLQ e IAM mínimo de publicador y proyector |
+| `modules/gcp/pubsub-consumer/tests` | alta gratuita: filtro `usuario.registrado.v1`, orden, 10 entregas, espera de 10 a 600 s, DLQ e IAM mínimo del consumidor |
+| `modules/gcp/observability/tests` | la alerta de atraso vigila exactamente las suscripciones de proyectores y consumidores, y la de DLQ todas las `.dlq.ops` |
 
 ## 10. Solución de problemas
 
@@ -707,7 +713,7 @@ cd ..\observability;                        terraform init -backend=false; terra
 | El código nuevo no aparece | se reconstruyó con el mismo tag `local` | usa un tag nuevo ([5.1](#51-cambió-el-código-del-backend)) |
 | `apply` espera hasta 10 minutos y falla | un Deployment no llega a estar listo | revisa `kubectl … logs deployment/<componente>` |
 | `users-management` queda en `CreateContainerConfigError` por `sportapp-users-jwt` | se aplicó un plan anterior a la incorporación del Secret JWT | ejecuta `terraform init -upgrade`, crea un plan nuevo y aplícalo |
-| Un proyector o consumidor en `CrashLoopBackOff` registra `started`, `stopping` y `stopped` sin error | su suscripción no existe en el emulador | compara el nombre del log con `PUBSUB_PROJECTIONS` en `pubsub-emulator.yaml`; el emulador vuelve a crear sus recursos cada vez que arranca |
+| Un proyector o consumidor en `CrashLoopBackOff` registra `started`, `stopping` y `stopped` sin error | su suscripción no existe en el emulador | compara el nombre del log con `PUBSUB_SUBSCRIPTIONS` en `pubsub-emulator.yaml`; el emulador vuelve a crear sus recursos cada vez que arranca |
 | `bind: address already in use` en un acceso | otro programa usa 18080, 18081, 15432 o 18085 | libera el puerto o cámbialo en `access.yaml` |
 | El navegador bloquea las llamadas del frontend | el origen no está en `CORS_ALLOWED_ORIGINS` | agrégalo al ConfigMap en `environments/local/main.tf` (local) o a `cloud_run_env.bff-web` (producción) |
 | `apply` de un ambiente creado antes de las dos fases falla al mover Deployments | el estado guarda las cargas con la dirección anterior (`p1`) | `terraform destroy` y `apply`, o mover cada carga con `terraform state mv` a `kustomization_resource.p1_workloads` |

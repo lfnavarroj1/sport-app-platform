@@ -46,6 +46,17 @@ variable "names" {
   default = null
 }
 
+variable "max_delivery_attempts" {
+  description = "Entregas antes de la DLQ cuando el perfil del dominio fija otro valor (p. ej. 5 en CMP-001); null usa settings."
+  type        = number
+  default     = null
+
+  validation {
+    condition     = var.max_delivery_attempts == null || (coalesce(var.max_delivery_attempts, 5) >= 5 && coalesce(var.max_delivery_attempts, 5) <= 100)
+    error_message = "Pub/Sub admite de 5 a 100 entregas antes de la DLQ."
+  }
+}
+
 variable "publisher_members" {
   description = "Miembros con roles/pubsub.publisher sobre el tópico, por clave estable."
   type        = map(string)
@@ -96,7 +107,7 @@ resource "google_pubsub_subscription" "projector" {
 
   dead_letter_policy {
     dead_letter_topic     = google_pubsub_topic.dead_letter.id
-    max_delivery_attempts = var.settings.max_delivery_attempts
+    max_delivery_attempts = coalesce(var.max_delivery_attempts, var.settings.max_delivery_attempts)
   }
 }
 

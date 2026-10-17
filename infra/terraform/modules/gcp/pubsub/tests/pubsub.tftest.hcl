@@ -105,6 +105,39 @@ run "entrenamientos_con_nombres_de_contrato" {
   }
 }
 
+# HU001 (CMP-001): el proyector de usuarios tiene 5 entregas antes de la DLQ.
+run "usuarios_con_entregas_del_perfil" {
+  command = plan
+
+  variables {
+    domain                = "usuarios"
+    max_delivery_attempts = 5
+    names = {
+      projector_subscription = "proyector-usuarios-v1"
+      dead_letter_topic      = "sportapp.usuarios.proyeccion.dlq"
+    }
+  }
+
+  assert {
+    condition = (
+      google_pubsub_subscription.projector.name == "proyector-usuarios-v1" &&
+      google_pubsub_subscription.projector.dead_letter_policy[0].max_delivery_attempts == 5 &&
+      google_pubsub_subscription.dead_letter_ops.name == "sportapp.usuarios.proyeccion.dlq.ops"
+    )
+    error_message = "Usuarios usa proyector-usuarios-v1, 5 entregas y sportapp.usuarios.proyeccion.dlq."
+  }
+}
+
+run "rechaza_menos_de_cinco_entregas" {
+  command = plan
+
+  variables {
+    max_delivery_attempts = 3
+  }
+
+  expect_failures = [var.max_delivery_attempts]
+}
+
 run "nombres_por_defecto" {
   command = plan
 
