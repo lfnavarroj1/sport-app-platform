@@ -69,6 +69,12 @@ variable "registration_policies_version" {
   default     = "local-dev"
 }
 
+variable "health_data_consent_version" {
+  description = "Versión vigente del consentimiento de datos de salud (users-management, HU005)."
+  type        = string
+  default     = "local-dev"
+}
+
 variable "password_revision" {
   description = "Incrementar regenera las contraseñas; exige recrear PostgreSQL (ver README)."
   type        = number

@@ -37,6 +37,11 @@ run "solo_dependencias_compartidas" {
     condition     = kubernetes_secret_v1.users_jwt.data_wo_revision == var.jwt_key_revision
     error_message = "La rotación de la clave JWT está controlada por jwt_key_revision."
   }
+
+  assert {
+    condition     = contains(data.kustomization_overlay.sportapp.config_map_generator[0].literals, "HEALTH_DATA_CONSENT_VERSION=local-dev")
+    error_message = "El ConfigMap sportapp-runtime define HEALTH_DATA_CONSENT_VERSION, sin la cual users-management no arranca."
+  }
 }
 
 run "rechaza_contexto_distinto_de_docker_desktop" {
