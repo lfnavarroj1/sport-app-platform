@@ -168,6 +168,18 @@ $region     = "us-central1"
 $operator   = "usuario@dominio.com"
 ```
 
+Significado de las variables:
+
+| Variable | Significado |
+| --- | --- |
+| `$billing` | ID de la cuenta de facturación de Google Cloud que se vinculará a los proyectos. Tiene el formato `XXXXXX-XXXXXX-XXXXXX`, se obtiene con `gcloud billing accounts list` y no es una contraseña. |
+| `$mgmt` | ID globalmente único del proyecto de gestión. Aloja el estado remoto de Terraform, Cloud Build, Cloud Deploy y las cuentas de servicio de entrega. `sportapp-mgmt-1234` es solo un ejemplo. |
+| `$production` | ID globalmente único del proyecto donde se ejecuta SportApp. Aloja GKE, Cloud Run, Cloud SQL, Artifact Registry, Pub/Sub, Secret Manager y la observabilidad de producción. `sportapp-prod-1234` es solo un ejemplo. |
+| `$region` | Región principal donde se crean los recursos regionales. SportApp usa `us-central1`; debe conservarse de forma consistente en Terraform y en los servicios de construcción y despliegue. |
+| `$operator` | Correo de la persona autorizada para ejecutar Terraform e impersonar las cuentas de servicio de plan y aplicación. Debe corresponder a una cuenta humana de Google. |
+
+Los valores `1234` y `XXXXXX-XXXXXX-XXXXXX` son marcadores de ejemplo y deben reemplazarse antes de ejecutar los comandos. Ninguna de estas variables contiene credenciales; la autenticación se realiza con ADC e impersonación.
+
 Carga el archivo con:
 
 ```powershell
