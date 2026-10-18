@@ -178,7 +178,7 @@ Una HU suma velocidad únicamente al llegar a `Aceptada`. Código parcial, PR ab
 2. identificar las HU aceptadas;
 3. publicar versiones de los componentes que cambiaron;
 4. actualizar los submódulos a los tags publicados;
-5. completar `release-manifest.yaml` con tags, commits y artefactos;
+5. completar `release-manifest.yaml` con tags, commits, artefactos por digest y la evidencia validada por el promotor (`evidence`: manifiesto de Cloud Build, su sha256 y el ID del build);
 6. ejecutar contratos, integración, E2E, seguridad y smoke;
 7. aceptar el incremento en la revisión del sprint;
 8. crear el tag de plataforma correspondiente;
@@ -291,4 +291,7 @@ Cada release de plataforma debe listar:
 | Verificar compatibilidad integrada | responsables de `sport-app-platform` |
 | Aprobar versión de sprint | responsable de producto y responsable técnico |
 | Crear tag y notas | workflow autorizado de release |
+| Construir y publicar por digest | Cloud Build en GCP, con la cuenta del componente (`release-backend`, `release-frontend`) |
+| Crear releases de Cloud Deploy | operador mediante el trigger interno `promote-release` (cuenta `release-promoter`) |
+| Aprobar el rollout productivo | aprobadores humanos (`approvers`); nunca una automatización |
 | Actualizar wiki y tablero | responsable de seguimiento con evidencia de CI |

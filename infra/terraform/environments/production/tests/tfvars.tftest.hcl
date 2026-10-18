@@ -14,7 +14,13 @@ mock_provider "google" {
 
 variables {
   project_id                  = "sportapp-test"
-  impersonate_service_account = null
+  impersonate_service_account = "tf-apply-production@sportapp-mgmt-test.iam.gserviceaccount.com"
+  delivery_identities = {
+    build_backend    = "cloud-build-backend@sportapp-mgmt-test.iam.gserviceaccount.com"
+    build_frontend   = "cloud-build-frontend@sportapp-mgmt-test.iam.gserviceaccount.com"
+    release_promoter = "release-promoter@sportapp-mgmt-test.iam.gserviceaccount.com"
+    deploy_execution = "cloud-deploy-execution@sportapp-mgmt-test.iam.gserviceaccount.com"
+  }
   # Valor sintético: producción no tiene aún una versión de consentimiento aprobada.
   health_data_consent_version = "consentimiento-prueba.v1"
 }
@@ -69,4 +75,28 @@ run "exige_version_de_consentimiento" {
   }
 
   expect_failures = [var.health_data_consent_version]
+}
+
+# Modelo sin automatización: solo se ejecuta impersonando tf-apply/tf-plan.
+run "exige_impersonar_terraform" {
+  command = plan
+
+  variables {
+    impersonate_service_account = "cloud-build-backend@sportapp-mgmt-test.iam.gserviceaccount.com"
+  }
+
+  expect_failures = [var.impersonate_service_account]
+}
+
+run "repositorios_separados" {
+  command = plan
+
+  assert {
+    condition = (
+      toset(keys(output.artifact_registry_urls)) == toset(["backend", "frontend"]) &&
+      endswith(output.artifact_registry_urls["backend"], "/sportapp-backend") &&
+      endswith(output.artifact_registry_urls["frontend"], "/sportapp-frontend")
+    )
+    error_message = "Producción separa Artifact Registry en sportapp-backend y sportapp-frontend."
+  }
 }

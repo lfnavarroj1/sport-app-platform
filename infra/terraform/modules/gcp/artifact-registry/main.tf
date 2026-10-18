@@ -25,6 +25,12 @@ variable "repository_id" {
   type        = string
 }
 
+variable "description" {
+  description = "Descripción del repositorio (qué publica y quién escribe)."
+  type        = string
+  default     = "Imágenes OCI de SportApp"
+}
+
 variable "immutable_tags" {
   description = "Impide reasignar un tag existente a otro digest."
   type        = bool
@@ -64,7 +70,7 @@ resource "google_artifact_registry_repository" "this" {
   project                = var.project_id
   location               = var.region
   repository_id          = var.repository_id
-  description            = "Imágenes OCI de SportApp"
+  description            = var.description
   format                 = "DOCKER"
   cleanup_policy_dry_run = var.cleanup_dry_run
 

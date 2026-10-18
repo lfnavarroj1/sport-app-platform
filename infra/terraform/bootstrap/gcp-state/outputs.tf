@@ -4,21 +4,16 @@ output "state_buckets" {
 }
 
 output "plan_service_accounts" {
-  description = "Cuenta tf-plan por ambiente."
+  description = "Cuenta tf-plan por ambiente: planes manuales de lectura, solo operadores."
   value       = { for env, sa in google_service_account.plan : env => sa.email }
 }
 
 output "apply_service_accounts" {
-  description = "Cuenta tf-apply por ambiente (impersonate_service_account en local)."
+  description = "Cuenta tf-apply por ambiente (impersonate_service_account en la estación del operador)."
   value       = { for env, sa in google_service_account.apply : env => sa.email }
 }
 
-output "delivery_service_accounts" {
-  description = "Cuenta ci-delivery por ambiente (GCP_DELIVERY_SERVICE_ACCOUNT en backend/frontend)."
-  value       = { for env, sa in google_service_account.delivery : env => sa.email }
-}
-
-output "workload_identity_provider" {
-  description = "Valor de workload_identity_provider para google-github-actions/auth."
-  value       = google_iam_workload_identity_pool_provider.github.name
+output "delivery_identities" {
+  description = "Identidades internas de entrega: valor de delivery_identities en environments/production y environments/delivery."
+  value       = { for key, sa in google_service_account.delivery : key => sa.email }
 }

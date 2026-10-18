@@ -61,7 +61,6 @@ variables {
   }
 
   artifact_registry = {
-    repository_id              = "sportapp"
     immutable_tags             = true
     keep_recent_versions       = 10
     delete_untagged_after_days = 7
@@ -75,6 +74,13 @@ variables {
     max_instances   = 3
     concurrency     = 80
     timeout_seconds = 30
+  }
+
+  delivery_identities = {
+    build_backend    = "cloud-build-backend@sportapp-mgmt-test.iam.gserviceaccount.com"
+    build_frontend   = "cloud-build-frontend@sportapp-mgmt-test.iam.gserviceaccount.com"
+    release_promoter = "release-promoter@sportapp-mgmt-test.iam.gserviceaccount.com"
+    deploy_execution = "cloud-deploy-execution@sportapp-mgmt-test.iam.gserviceaccount.com"
   }
 
   app_config = {
@@ -204,7 +210,7 @@ run "servicios_y_secretos_de_aplicacion" {
 
   variables {
     cloud_run_images = {
-      bff-web = "us-central1-docker.pkg.dev/sportapp-test/sportapp/bff-web@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      bff-web = "us-central1-docker.pkg.dev/sportapp-test/sportapp-backend/bff-web@sha256:0000000000000000000000000000000000000000000000000000000000000000"
     }
     cloud_run_public_services = ["bff-web"]
     app_secrets = {
@@ -255,11 +261,144 @@ run "rechaza_imagen_por_tag" {
 
   variables {
     cloud_run_images = {
-      web = "us-central1-docker.pkg.dev/sportapp-test/sportapp/web:latest"
+      web = "us-central1-docker.pkg.dev/sportapp-test/sportapp-frontend/web:latest"
     }
   }
 
   expect_failures = [var.cloud_run_images]
+}
+
+run "rechaza_imagen_externa" {
+  command = plan
+
+  variables {
+    cloud_run_images = {
+      bff-web = "docker.io/library/nginx@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  }
+
+  expect_failures = [var.cloud_run_images]
+}
+
+run "rechaza_imagen_del_otro_componente" {
+  command = plan
+
+  variables {
+    cloud_run_images = {
+      web = "us-central1-docker.pkg.dev/sportapp-test/sportapp-backend/web@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  }
+
+  expect_failures = [var.cloud_run_images]
+}
+
+run "rechaza_identidad_terraform_como_entrega" {
+  command = plan
+
+  variables {
+    delivery_identities = {
+      build_backend    = "cloud-build-backend@sportapp-mgmt-test.iam.gserviceaccount.com"
+      build_frontend   = "cloud-build-frontend@sportapp-mgmt-test.iam.gserviceaccount.com"
+      release_promoter = "release-promoter@sportapp-mgmt-test.iam.gserviceaccount.com"
+      deploy_execution = "tf-apply-production@sportapp-mgmt-test.iam.gserviceaccount.com"
+    }
+  }
+
+  expect_failures = [var.delivery_identities]
+}
+
+# Separación de Artifact Registry y permisos cruzados de Cloud Deploy.
+run "entrega_separada" {
+  command = plan
+
+  variables {
+    cloud_run_images = {
+      web        = "us-central1-docker.pkg.dev/sportapp-test/sportapp-frontend/web@sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      bff-web    = "us-central1-docker.pkg.dev/sportapp-test/sportapp-backend/bff-web@sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      bff-mobile = "us-central1-docker.pkg.dev/sportapp-test/sportapp-backend/bff-mobile@sha256:3333333333333333333333333333333333333333333333333333333333333333"
+    }
+  }
+
+  assert {
+    condition = (
+      output.artifact_registry_urls == {
+        backend  = "us-central1-docker.pkg.dev/sportapp-test/sportapp-backend"
+        frontend = "us-central1-docker.pkg.dev/sportapp-test/sportapp-frontend"
+      }
+    )
+    error_message = "Hay un repositorio de Artifact Registry por componente."
+  }
+
+  # Cada cuenta de Cloud Build escribe solo en su repositorio; nadie más escribe.
+  assert {
+    condition = (
+      local.artifact_repositories.backend.writers == { cloud-build-backend = "serviceAccount:cloud-build-backend@sportapp-mgmt-test.iam.gserviceaccount.com" } &&
+      local.artifact_repositories.frontend.writers == { cloud-build-frontend = "serviceAccount:cloud-build-frontend@sportapp-mgmt-test.iam.gserviceaccount.com" }
+    )
+    error_message = "cloud-build-backend solo escribe en sportapp-backend y cloud-build-frontend solo en sportapp-frontend."
+  }
+
+  # Ejecución y promoción solo leen; las cuentas de build no leen el repositorio ajeno.
+  assert {
+    condition = alltrue([
+      for key, repo in local.artifact_repositories : (
+        repo.readers["deploy-execution"] == "serviceAccount:cloud-deploy-execution@sportapp-mgmt-test.iam.gserviceaccount.com" &&
+        repo.readers["release-promoter"] == "serviceAccount:release-promoter@sportapp-mgmt-test.iam.gserviceaccount.com" &&
+        !anytrue([for k in keys(repo.readers) : strcontains(k, "cloud-build")])
+      )
+    ])
+    error_message = "cloud-deploy-execution y release-promoter solo leen ambos repositorios."
+  }
+
+  assert {
+    condition = (
+      google_project_iam_member.deploy_execution_cluster.role == "roles/container.clusterViewer" &&
+      toset(keys(google_service_account_iam_member.deploy_execution_act_as)) == toset(["web", "bff-web", "bff-mobile"]) &&
+      alltrue([for b in google_service_account_iam_member.deploy_execution_act_as : b.role == "roles/iam.serviceAccountUser" && b.member == "serviceAccount:cloud-deploy-execution@sportapp-mgmt-test.iam.gserviceaccount.com"])
+    )
+    error_message = "cloud-deploy-execution solo obtiene credenciales del clúster y adjunta las cuentas de los servicios de Cloud Run."
+  }
+
+  assert {
+    condition = (
+      toset(keys(output.cloud_run_deploy_config)) == toset(["web", "bff-web", "bff-mobile"]) &&
+      output.cloud_run_deploy_config["web"].repository == "frontend" &&
+      output.cloud_run_deploy_config["bff-web"].repository == "backend" &&
+      keys(output.cloud_run_deploy_config["bff-web"].env) == keys(output.cloud_run_env["bff-web"])
+    )
+    error_message = "Cloud Deploy recibe la misma configuración de Cloud Run que administra Terraform."
+  }
+
+  assert {
+    condition     = length(google_binary_authorization_policy.this) == 0
+    error_message = "Binary Authorization está deshabilitada por defecto."
+  }
+}
+
+run "binary_authorization_exige_attestors" {
+  command = plan
+
+  variables {
+    binary_authorization = { enabled = true }
+  }
+
+  expect_failures = [var.binary_authorization]
+}
+
+run "binary_authorization_habilitada" {
+  command = plan
+
+  variables {
+    binary_authorization = { enabled = true, attestors = ["projects/sportapp-test/attestors/cloud-build"] }
+  }
+
+  assert {
+    condition = (
+      google_binary_authorization_policy.this[0].default_admission_rule[0].evaluation_mode == "REQUIRE_ATTESTATION" &&
+      google_binary_authorization_policy.this[0].default_admission_rule[0].enforcement_mode == "ENFORCED_BLOCK_AND_AUDIT_LOG"
+    )
+    error_message = "Con Binary Authorization solo se admiten imágenes con attestation."
+  }
 }
 
 run "rechaza_secreto_no_declarado" {

@@ -14,7 +14,7 @@ variable "name" {
 }
 
 variable "image" {
-  description = "Imagen inmutable: <repositorio>@sha256:<digest>."
+  description = "Digest inicial (<repositorio>@sha256:<digest>): solo crea la primera revisión; después la imagen la administra Cloud Deploy."
   type        = string
 
   validation {
@@ -113,4 +113,16 @@ variable "liveness_probe_path" {
 variable "deletion_protection" {
   description = "Impide que Terraform elimine el servicio."
   type        = bool
+}
+
+variable "deployer_members" {
+  description = "Identidades de Cloud Deploy que publican revisiones en este servicio (roles/run.developer solo aquí)."
+  type        = map(string)
+  default     = {}
+}
+
+variable "binary_authorization_enabled" {
+  description = "Exige la política de Binary Authorization del proyecto para las revisiones."
+  type        = bool
+  default     = false
 }

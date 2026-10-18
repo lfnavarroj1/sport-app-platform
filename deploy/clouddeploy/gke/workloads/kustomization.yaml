@@ -1,0 +1,135 @@
+# Perfil workloads (target production-gke): solo los Deployments del backend en
+# GKE. Los Jobs ya corrieron en la etapa migrations, los Services los administra
+# Terraform y bff-web/bff-mobile van a Cloud Run.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../backend-base
+patches:
+  - patch: |-
+      $patch: delete
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: unused
+    target:
+      kind: Job
+  - patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: unused
+    target:
+      kind: Service
+  - patch: |-
+      $patch: delete
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: unused
+    target:
+      kind: Deployment
+      name: bff-web|bff-mobile
+  # Cada Deployment usa la KSA de su nombre (Workload Identity).
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: users-management
+    target: {kind: Deployment, name: users-management}
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: users-management-outbox-publisher
+    target: {kind: Deployment, name: users-management-outbox-publisher}
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: users-management-read-projector
+    target: {kind: Deployment, name: users-management-read-projector}
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: affiliation-management
+    target: {kind: Deployment, name: affiliation-management}
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: affiliation-management-free-plan-consumer
+    target: {kind: Deployment, name: affiliation-management-free-plan-consumer}
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: affiliation-management-outbox-publisher
+    target: {kind: Deployment, name: affiliation-management-outbox-publisher}
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: complementary-services
+    target: {kind: Deployment, name: complementary-services}
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: complementary-services-outbox-publisher
+    target: {kind: Deployment, name: complementary-services-outbox-publisher}
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: training-management
+    target: {kind: Deployment, name: training-management}
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: training-management-outbox-publisher
+    target: {kind: Deployment, name: training-management-outbox-publisher}
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: training-management-read-projector
+    target: {kind: Deployment, name: training-management-read-projector}
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: events-management
+    target: {kind: Deployment, name: events-management}
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: events-management-outbox-publisher
+    target: {kind: Deployment, name: events-management-outbox-publisher}
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: events-management-read-projector
+    target: {kind: Deployment, name: events-management-read-projector}
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: third-party-management
+    target: {kind: Deployment, name: third-party-management}
+  # Dos réplicas por API (vista de despliegue; hipótesis por validar con carga).
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
+    target:
+      kind: Deployment
+      name: users-management|affiliation-management|complementary-services|training-management|events-management|third-party-management
+  # ADR-036: el catálogo esperado lo fija el ambiente en sportapp-runtime.
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: affiliation-management
+      spec:
+        template:
+          spec:
+            containers:
+              - name: app
+                env:
+                  - name: AFFILIATION_EXPECTED_CATALOG_VERSION
+                    value: null
+                    valueFrom:
+                      configMapKeyRef:
+                        name: sportapp-runtime
+                        key: AFFILIATION_EXPECTED_CATALOG_VERSION

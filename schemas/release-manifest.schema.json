@@ -161,6 +161,26 @@
         }
       }
     },
+    "releaseEvidence": {
+      "description": "Evidencia que validó el promotor: manifiesto publicado por Cloud Build, su sha256 (anotación sportapp.io/evidence-sha256 de la release de Cloud Deploy) y el identificador del build.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["uri", "sha256", "cloudBuildId"],
+      "properties": {
+        "uri": {
+          "type": "string",
+          "pattern": "^gs://[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]/.+-release\\.json$"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "cloudBuildId": {
+          "type": "string",
+          "pattern": "^[0-9a-f-]{8,64}$"
+        }
+      }
+    },
     "mobileArtifact": {
       "type": "object",
       "additionalProperties": false,
@@ -201,6 +221,9 @@
         },
         "artifacts": {
           "$ref": "#/$defs/backendArtifacts"
+        },
+        "evidence": {
+          "$ref": "#/$defs/releaseEvidence"
         }
       }
     },
@@ -240,6 +263,9 @@
               "type": "null"
             }
           ]
+        },
+        "evidence": {
+          "$ref": "#/$defs/releaseEvidence"
         }
       }
     },

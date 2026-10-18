@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "1.0",
+  "kind": "frontend-release",
+  "repository": "lfnavarroj1/sport-app-frontend",
+  "component": "web",
+  "version": "0.9.0",
+  "tag": "v0.9.0",
+  "commit": "89abcdef0123456789abcdef0123456789abcdef",
+  "expectedBffContract": {
+    "name": "bff-web",
+    "version": "0.12.0",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "artifact": {
+    "name": "web.tgz",
+    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "source": "/usr/share/nginx/html"
+  },
+  "checks": [
+    { "name": "format", "command": "npm run format:check", "status": "passed" },
+    { "name": "unit-tests", "command": "npm run test:ci", "status": "passed" },
+    { "name": "container-build", "command": "docker build (una sola vez)", "status": "passed" }
+  ],
+  "smokeTest": {
+    "status": "passed",
+    "script": "deploy/docker/smoke-test.sh",
+    "scriptSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "checksPassed": 6
+  },
+  "image": {
+    "uri": "us-central1-docker.pkg.dev/sportapp-prod-test/sportapp-frontend/web@sha256:9999999999999999999999999999999999999999999999999999999999999999",
+    "digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+  },
+  "cloudBuild": {
+    "buildId": "c7e8f9a0-2222-4333-8444-a55566667777",
+    "projectId": "sportapp-mgmt-test",
+    "location": "us-central1"
+  },
+  "createdAt": "2026-10-18T12:30:00Z"
+}

@@ -1,0 +1,79 @@
+# Perfil migrations (target production-gke-migrations): solo los Jobs de la
+# release, cada uno con la KSA de migración de su servicio. Deployments y
+# Services se retiran: los primeros los aplica la etapa workloads y los
+# segundos los administra Terraform.
+#
+# El sufijo y la etiqueta de release (@@...@@) los fija scripts/promote_release.py:
+# cada release crea Jobs nuevos y repetir un rollout de la misma release no
+# vuelve a ejecutar una migración que ya terminó.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../backend-base
+nameSuffix: "@@RELEASE_SUFFIX@@"
+labels:
+  - pairs:
+      sportapp.io/release: "@@RELEASE_LABEL@@"
+    includeSelectors: false
+    includeTemplates: false
+patches:
+  # Retirar Deployments (etapa workloads o Cloud Run) y Services (Terraform).
+  - patch: |-
+      $patch: delete
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: unused
+    target:
+      kind: Deployment
+  - patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: unused
+    target:
+      kind: Service
+  # KSA de migración por servicio (Workload Identity, secreto de su dominio).
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: users-management-migrate
+    target:
+      kind: Job
+      name: users-management-.*
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: affiliation-management-migrate
+    target:
+      kind: Job
+      name: affiliation-management-.*
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: complementary-services-migrate
+    target:
+      kind: Job
+      name: complementary-services-.*
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: training-management-migrate
+    target:
+      kind: Job
+      name: training-management-.*
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: events-management-migrate
+    target:
+      kind: Job
+      name: events-management-.*
+  # Los Jobs terminados se conservan 7 días para auditoría y luego se limpian.
+  - patch: |-
+      - op: add
+        path: /spec/ttlSecondsAfterFinished
+        value: 604800
+    target:
+      kind: Job

@@ -121,7 +121,6 @@ variable "pubsub" {
 variable "artifact_registry" {
   description = "Repositorio de imágenes y su limpieza."
   type = object({
-    repository_id              = string
     immutable_tags             = bool
     keep_recent_versions       = number
     delete_untagged_after_days = number
@@ -129,10 +128,38 @@ variable "artifact_registry" {
   })
 }
 
-variable "artifact_registry_writers" {
-  description = "Pipelines que publican imágenes, por clave estable."
-  type        = map(string)
-  default     = {}
+variable "delivery_identities" {
+  description = "Correos de las identidades de entrega del proyecto de gestión (salida delivery_identities del bootstrap)."
+  type = object({
+    build_backend    = string
+    build_frontend   = string
+    release_promoter = string
+    deploy_execution = string
+  })
+
+  validation {
+    condition     = alltrue([for email in values(var.delivery_identities) : can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]@[a-z][a-z0-9-]+\\.iam\\.gserviceaccount\\.com$", email)) && !startswith(email, "tf-")])
+    error_message = "Cada identidad de entrega es una cuenta de servicio administrada por el usuario y nunca una cuenta tf-*."
+  }
+
+  validation {
+    condition     = length(distinct(values(var.delivery_identities))) == 4
+    error_message = "Construcción backend, construcción frontend, promoción y ejecución usan cuentas distintas."
+  }
+}
+
+variable "binary_authorization" {
+  description = "Binary Authorization para GKE y Cloud Run. Deshabilitada hasta que existan attestations válidas del proceso de build."
+  type = object({
+    enabled   = bool
+    attestors = optional(list(string), [])
+  })
+  default = { enabled = false }
+
+  validation {
+    condition     = !var.binary_authorization.enabled || length(var.binary_authorization.attestors) > 0
+    error_message = "Habilitar Binary Authorization exige al menos un attestor (projects/<proyecto>/attestors/<nombre>)."
+  }
 }
 
 variable "cloud_run" {
@@ -148,9 +175,19 @@ variable "cloud_run" {
 }
 
 variable "cloud_run_images" {
-  description = "Imagen por digest de web, bff-web y bff-mobile. Un servicio sin imagen no se crea."
+  description = "Digest inicial de web, bff-web y bff-mobile: solo crea la primera revisión (después la imagen la administra Cloud Deploy). Un servicio sin imagen no se crea."
   type        = map(string)
   default     = {}
+
+  # Nunca una imagen externa ni de otro componente: web desde sportapp-frontend
+  # y los BFF desde sportapp-backend, en el Artifact Registry del ambiente.
+  validation {
+    condition = alltrue([
+      for name, image in var.cloud_run_images :
+      startswith(image, "${var.region}-docker.pkg.dev/${var.project_id}/${name == "web" ? "sportapp-frontend" : "sportapp-backend"}/${name}@sha256:")
+    ])
+    error_message = "Cada imagen inicial debe venir del Artifact Registry del ambiente (sportapp-frontend/web o sportapp-backend/<bff>) y por digest."
+  }
 
   validation {
     condition     = alltrue([for k in keys(var.cloud_run_images) : contains(["web", "bff-web", "bff-mobile"], k)])

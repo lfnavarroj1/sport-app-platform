@@ -126,6 +126,38 @@ locals {
     bff-mobile = { for api in local.bff_upstreams["bff-mobile"] : local.gke_internal_apis[api] => "http://${google_compute_address.gke_internal_api[api].address}" }
   }
 
+  # Variables efectivas de cada servicio: las mismas que recibe Cloud Deploy como
+  # parámetros del target (environments/delivery), para que un rollout no las cambie.
+  cloud_run_env_effective = {
+    for name, s in local.cloud_run_services : name => merge({ APP_ENV = var.environment }, local.cloud_run_platform_env[name], lookup(var.cloud_run_env, name, {}))
+  }
+
+  # Imágenes publicadas por cada cuenta de Cloud Build (allowlist de entrega).
+  artifact_repositories = {
+    backend = {
+      repository_id = "sportapp-backend"
+      description   = "Imágenes OCI del backend (APIs, workers y BFF); solo escribe cloud-build-backend"
+      writers       = { cloud-build-backend = "serviceAccount:${var.delivery_identities.build_backend}" }
+      readers = {
+        gke-nodes        = module.gke.node_service_account_member
+        deploy-execution = "serviceAccount:${var.delivery_identities.deploy_execution}"
+        release-promoter = "serviceAccount:${var.delivery_identities.release_promoter}"
+      }
+    }
+    frontend = {
+      repository_id = "sportapp-frontend"
+      description   = "Imagen OCI de la aplicación web; solo escribe cloud-build-frontend"
+      writers       = { cloud-build-frontend = "serviceAccount:${var.delivery_identities.build_frontend}" }
+      readers = {
+        deploy-execution = "serviceAccount:${var.delivery_identities.deploy_execution}"
+        release-promoter = "serviceAccount:${var.delivery_identities.release_promoter}"
+      }
+    }
+  }
+
+  # Repositorio de cada servicio de Cloud Run.
+  cloud_run_repository = { web = "frontend", bff-web = "backend", bff-mobile = "backend" }
+
   service_accounts = merge(
     {
       for key, w in local.gke_workloads : key => {
@@ -154,11 +186,12 @@ module "project_services" {
   source = "../project-services"
 
   project_id = var.project_id
-  services = [
+  services = concat([
     "artifactregistry.googleapis.com",
     "cloudresourcemanager.googleapis.com",
     "compute.googleapis.com",
     "container.googleapis.com",
+    "containerscanning.googleapis.com",
     "iam.googleapis.com",
     "iamcredentials.googleapis.com",
     "logging.googleapis.com",
@@ -168,7 +201,7 @@ module "project_services" {
     "secretmanager.googleapis.com",
     "servicenetworking.googleapis.com",
     "sqladmin.googleapis.com",
-  ]
+  ], var.binary_authorization.enabled ? ["binaryauthorization.googleapis.com"] : [])
 }
 
 module "network" {
@@ -203,6 +236,8 @@ module "gke" {
   suspended                  = var.suspended
   labels                     = var.labels
 
+  binary_authorization_enabled = var.binary_authorization.enabled
+
   node_pool = {
     machine_type = var.gke.machine_type
     spot         = var.gke.spot
@@ -221,18 +256,63 @@ module "iam" {
   workload_pool    = module.gke.workload_pool
 }
 
+# Un repositorio por componente: cada cuenta de Cloud Build solo escribe en el
+# suyo y las identidades de ejecución y promoción solo leen.
 module "artifact_registry" {
-  source = "../artifact-registry"
+  source   = "../artifact-registry"
+  for_each = local.artifact_repositories
 
   project_id                 = var.project_id
   region                     = var.region
-  repository_id              = var.artifact_registry.repository_id
+  repository_id              = each.value.repository_id
+  description                = each.value.description
   immutable_tags             = var.artifact_registry.immutable_tags
   keep_recent_versions       = var.artifact_registry.keep_recent_versions
   delete_untagged_after_days = var.artifact_registry.delete_untagged_after_days
   cleanup_dry_run            = var.artifact_registry.cleanup_dry_run
-  reader_members             = { gke-nodes = module.gke.node_service_account_member }
-  writer_members             = var.artifact_registry_writers
+  reader_members             = each.value.readers
+  writer_members             = each.value.writers
+
+  depends_on = [module.project_services]
+}
+
+# --- Permisos cruzados de las identidades de entrega (proyecto de gestión) ---
+
+# cloud-deploy-execution obtiene credenciales del clúster (endpoint DNS); qué
+# puede hacer dentro lo limita Kubernetes RBAC al namespace productivo
+# (environments/production-workloads). clusterViewer no lee objetos de Kubernetes.
+resource "google_project_iam_member" "deploy_execution_cluster" {
+  project = var.project_id
+  role    = "roles/container.clusterViewer"
+  member  = "serviceAccount:${var.delivery_identities.deploy_execution}"
+}
+
+# Para publicar una revisión con su identidad, Cloud Deploy debe poder adjuntar
+# la cuenta del servicio (actAs), solo en las de los servicios de Cloud Run.
+resource "google_service_account_iam_member" "deploy_execution_act_as" {
+  for_each = module.cloud_run
+
+  service_account_id = "projects/${var.project_id}/serviceAccounts/${module.iam.emails[each.key]}"
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${var.delivery_identities.deploy_execution}"
+}
+
+# --- Binary Authorization (deshabilitada por defecto) -------------------------
+
+# Política única del proyecto: solo imágenes con attestation de los attestors
+# indicados (siempre por digest). Solo Terraform la modifica; las identidades de
+# entrega no reciben roles de Binary Authorization.
+resource "google_binary_authorization_policy" "this" {
+  count = var.binary_authorization.enabled ? 1 : 0
+
+  project                       = var.project_id
+  global_policy_evaluation_mode = "ENABLE"
+
+  default_admission_rule {
+    evaluation_mode         = "REQUIRE_ATTESTATION"
+    enforcement_mode        = "ENFORCED_BLOCK_AND_AUDIT_LOG"
+    require_attestations_by = var.binary_authorization.attestors
+  }
 
   depends_on = [module.project_services]
 }
@@ -384,13 +464,16 @@ module "cloud_run" {
   concurrency           = var.cloud_run.concurrency
   timeout_seconds       = var.cloud_run.timeout_seconds
   allow_unauthenticated = contains(var.cloud_run_public_services, each.key)
-  env                   = merge({ APP_ENV = var.environment }, local.cloud_run_platform_env[each.key], lookup(var.cloud_run_env, each.key, {}))
+  env                   = local.cloud_run_env_effective[each.key]
   secret_env            = lookup(var.cloud_run_secret_env, each.key, {})
-  vpc_network           = each.value.vpc ? module.network.network_id : null
-  vpc_subnetwork        = each.value.vpc ? module.network.serverless_subnetwork_id : null
-  startup_probe_path    = each.value.startup_probe_path
-  liveness_probe_path   = each.value.liveness_probe_path
-  deletion_protection   = var.deletion_protection
+  deployer_members      = { deploy-execution = "serviceAccount:${var.delivery_identities.deploy_execution}" }
+
+  binary_authorization_enabled = var.binary_authorization.enabled
+  vpc_network                  = each.value.vpc ? module.network.network_id : null
+  vpc_subnetwork               = each.value.vpc ? module.network.serverless_subnetwork_id : null
+  startup_probe_path           = each.value.startup_probe_path
+  liveness_probe_path          = each.value.liveness_probe_path
+  deletion_protection          = var.deletion_protection
 
   depends_on = [module.app_secrets]
 }

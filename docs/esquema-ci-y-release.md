@@ -6,13 +6,13 @@ SportApp conserva versiones independientes de backend, frontend web y móvil. Un
 
 Cada repositorio construye su artefacto una sola vez. La plataforma registra y promueve sus digests o checksums; nunca recompila un componente para pasarlo de staging a producción.
 
-> **Actualización 2026-10-10 (ADR-022):** el ambiente de desarrollo es local, en el Kubernetes kubeadm de Docker Desktop, y GCP se usa solo para producción. Un merge a `develop` no aprovisiona ni despliega GCP: valida la revisión integrada y cada desarrollador aplica la raíz `environments/local` cuando necesita actualizar su entorno. Las releases de componente publican sus imágenes en el Artifact Registry de producción. Los workflows `deliver-*-development.yml` quedan obsoletos y deben retirarse o convertirse en workflows de release.
+> **Actualización 2026-10-18:** desarrollo es local y GCP se usa solo para producción. GitHub Actions no obtiene identidad GCP. Un merge a `develop` no aprovisiona, publica ni despliega en GCP. Al etiquetar una release, Cloud Build —iniciado y autenticado dentro de GCP— construye y publica por digest; Cloud Deploy promueve la composición únicamente después de aprobación humana. Terraform se ejecuta manualmente desde la estación del operador.
 
 ## Situación actual
 
 Al 11 de octubre de 2026 el backend ya ejecuta CI remota en push y pull request. La plataforma contiene Terraform para desarrollo local y producción, además de un `release-manifest.yaml` candidato y su JSON Schema. El manifiesto permanece en `status: draft` porque los componentes fijados aún no tienen tags y artefactos de release registrados. Todavía no existen los workflows de release coordinada; frontend y móvil conservan pendientes según sus registros.
 
-Por lo tanto, este es el procedimiento acordado para implementar; todavía no representa un release ejecutable en GitHub Actions.
+Desde el 2026-10-18 la plataforma contiene, sin aplicar en GCP, el plano de entrega completo: triggers `release-backend` y `release-frontend` de Cloud Build, evidencia `backend-release.json`/`frontend-release.json` validada por [JSON Schema](../schemas/backend-release.schema.json), el promotor [`cloudbuild.promote.yaml`](../cloudbuild.promote.yaml) y los pipelines de Cloud Deploy `backend-gke`, `bff-web`, `bff-mobile` y `frontend-web`, todos con aprobación. Backend y frontend ya tienen su `cloudbuild.release.yaml`. GitHub Actions solo valida: nunca publica, promueve ni despliega.
 
 ## Qué hace cada evento
 
@@ -21,7 +21,7 @@ Por lo tanto, este es el procedimiento acordado para implementar; todavía no re
 | Push a `feature/**`, `fix/**` o `chore/**` | rápida | no publica | ninguno |
 | PR hacia `develop` | completa | candidato no publicado | ninguno; usa servicios de CI o composición local |
 | Merge a `develop` | completa sobre la revisión integrada | no publica | ninguno; el ambiente local se actualiza bajo demanda |
-| PR `release/**` hacia `main` de un componente | release del componente | publica al aprobar y etiquetar | no libera todo SportApp |
+| PR `release/**` hacia `main` de un componente | release del componente | Cloud Build publica al etiquetar | no libera todo SportApp ni entrega identidad GCP a GitHub |
 | PR `release/**` en la plataforma | manifiesto, contratos, integración y E2E disponibles | reutiliza artefactos publicados | no producción; staging está pendiente |
 | Tag de plataforma | congela la composición | manifiesto y notas | habilita producción |
 | Promoción manual aprobada | smoke y comprobación | mismos digests | producción |
@@ -126,7 +126,7 @@ Contrato:   v1.0.0 · compatible
 | Backend | `ci.yml`, `release-backend.yml` (`deliver-development.yml` debe retirarse o transformarse) |
 | Frontend | `ci-web.yml`, `release-web.yml` (no se crea entrega automática de development) |
 | Móvil | `ci-mobile.yml`, `release-mobile.yml` |
-| Plataforma | `validate-platform.yml`, `prepare-platform-release.yml`, `test-platform-release.yml`, `release-platform.yml`, `promote-platform.yml`, `rollback-platform.yml` |
+| Plataforma | `validate-platform.yml` (implementado: Markdown, YAML, JSON, scripts y Terraform con mocks); `prepare-platform-release.yml` y `test-platform-release.yml` (pendientes). La promoción y el rollback **no** son workflows de GitHub: son el trigger interno `promote-release` y Cloud Deploy con aprobación ([preparación de GCP, secciones 11 a 14](preparacion-terraform-gcp.md#11-configurar-construcción-y-publicación)) |
 
 ## Condiciones previas de activación
 
@@ -134,6 +134,8 @@ Contrato:   v1.0.0 · compatible
 2. crear y proteger `develop` y `main`;
 3. confirmar y publicar el código y los workflows locales;
 4. integrar la validación del esquema y la coincidencia de submódulos en CI;
-5. configurar GitHub Environments y OIDC/WIF;
-6. definir Artifact Registry y destino de producción; staging se define aparte si el riesgo lo exige;
-7. implementar `version.json`, `GET /version` y el verificador posterior al despliegue.
+5. retirar OIDC/WIF y cualquier variable o secreto GCP de GitHub (código listo; en GitHub y en un estado aplicado, seguir la [migración](migracion-retiro-wif-github.md));
+6. aplicar en GCP las conexiones de lectura, cuentas Cloud Build separadas, Artifact Registry y manifiestos por digest (código listo en `bootstrap`, `production` y `delivery`);
+7. aplicar Cloud Deploy, targets productivos, cuenta de ejecución mínima y aprobación humana (código listo en `delivery` y `deploy/clouddeploy`);
+8. separación de la propiedad de imágenes/workloads entre Terraform y Cloud Deploy (implementada y probada);
+9. implementar `version.json`, `GET /version` y el verificador posterior al despliegue.

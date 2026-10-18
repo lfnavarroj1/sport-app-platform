@@ -1,4 +1,5 @@
-# Credenciales: nunca llaves JSON (ADC con impersonación local o WIF en CI).
+# Credenciales: nunca llaves JSON. Solo la estación del operador, con ADC e
+# impersonación de tf-apply-production; ninguna automatización ejecuta esta raíz.
 provider "google" {
   project                     = var.project_id
   region                      = var.region

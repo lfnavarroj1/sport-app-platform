@@ -1,0 +1,26 @@
+# Copiar a gcp.auto.tfvars (ignorado por Git). Sin llaves, PAT ni secretos de GitHub.
+# Esta raíz se aplica desde la estación del operador después de production y
+# production-workloads (docs/preparacion-terraform-gcp.md, secciones 10 a 13).
+
+management_project_id       = "sportapp-mgmt-000000"
+impersonate_service_account = "tf-apply-production@sportapp-mgmt-000000.iam.gserviceaccount.com"
+state_bucket                = "sportapp-mgmt-000000-tfstate-production"
+
+# Salida delivery_identities del bootstrap.
+delivery_identities = {
+  build_backend    = "cloud-build-backend@sportapp-mgmt-000000.iam.gserviceaccount.com"
+  build_frontend   = "cloud-build-frontend@sportapp-mgmt-000000.iam.gserviceaccount.com"
+  release_promoter = "release-promoter@sportapp-mgmt-000000.iam.gserviceaccount.com"
+  deploy_execution = "cloud-deploy-execution@sportapp-mgmt-000000.iam.gserviceaccount.com"
+}
+
+# Personas o grupos que aprueban rollouts de producción.
+approvers = ["group:aprobadores-sportapp@example.com"]
+
+# Imagen por digest con gcloud, kubectl y gke-gcloud-auth-plugin (verificaciones GKE).
+deploy_tools_image = "gcr.io/google.com/cloudsdktool/google-cloud-cli:<versión>@sha256:<64 hex>"
+
+# 1) Primer apply: false. 2) Autorizar la GitHub App en la consola. 3) true.
+github_connection_ready = false
+# 4) true cuando backend y frontend tengan cloudbuild.release.yaml en main.
+release_triggers_enabled = false

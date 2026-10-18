@@ -24,7 +24,8 @@ module "platform" {
   cloud_sql                 = var.cloud_sql
   pubsub                    = var.pubsub
   artifact_registry         = var.artifact_registry
-  artifact_registry_writers = var.artifact_registry_writers
+  delivery_identities       = var.delivery_identities
+  binary_authorization      = var.binary_authorization
   cloud_run                 = var.cloud_run
   cloud_run_images          = var.cloud_run_images
   cloud_run_public_services = var.cloud_run_public_services
