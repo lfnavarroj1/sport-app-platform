@@ -1,0 +1,69 @@
+# Promotor de releases de SportApp (trigger manual "promote-release").
+#
+# Lo crea environments/delivery en el proyecto de gestión con la cuenta
+# release-promoter, desde main de sport-app-platform. Se ejecuta solo desde la
+# consola de GCP o el gcloud del operador; nunca desde GitHub.
+#
+# Solo valida la evidencia publicada por Cloud Build y crea releases en los
+# pipelines existentes de Cloud Deploy, que quedan pendientes de aprobación
+# humana. No aprueba, no modifica pipelines ni targets, no ejecuta Terraform ni
+# kubectl. El operador elige _COMPONENT, _VERSION y, para el frontend,
+# _BACKEND_VERSION; los demás valores los fija Terraform y el script los valida.
+
+substitutions:
+  _COMPONENT: ""
+  _VERSION: ""
+  _BACKEND_VERSION: ""
+  # Solo para volver a promover una versión ya publicada (rollback): 1 a 8 [a-z0-9].
+  _RELEASE_SUFFIX: ""
+  _DELIVERY_PROJECT: ""
+  _REGION: ""
+  _EVIDENCE_BUCKET_BACKEND: ""
+  _EVIDENCE_BUCKET_FRONTEND: ""
+  _SOURCE_BUCKET: ""
+  _AR_BACKEND: ""
+  _AR_FRONTEND: ""
+  _GKE_CLUSTER: ""
+  _GKE_LOCATION: ""
+  _GKE_PROJECT: ""
+  _NAMESPACE: ""
+  _RUN_PROJECT: ""
+  _RUN_REGION: ""
+  _DEPLOY_TOOLS_IMAGE: ""
+  _RUN_VERIFY_IMAGE: ""
+  _PROMOTER_IMAGE: ""
+  _BACKEND_REPOSITORY_RESOURCE: ""
+
+options:
+  substitutionOption: MUST_MATCH
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 1200s
+
+steps:
+  - id: promote
+    # Imagen fijada por digest (variable promoter_image de environments/delivery).
+    name: ${_PROMOTER_IMAGE}
+    entrypoint: python3
+    args:
+      - scripts/promote_release.py
+      - --component=${_COMPONENT}
+      - --version=${_VERSION}
+      - --backend-version=${_BACKEND_VERSION}
+      - --delivery-project=${_DELIVERY_PROJECT}
+      - --region=${_REGION}
+      - --evidence-bucket-backend=${_EVIDENCE_BUCKET_BACKEND}
+      - --evidence-bucket-frontend=${_EVIDENCE_BUCKET_FRONTEND}
+      - --source-bucket=${_SOURCE_BUCKET}
+      - --ar-backend=${_AR_BACKEND}
+      - --ar-frontend=${_AR_FRONTEND}
+      - --gke-cluster=${_GKE_CLUSTER}
+      - --gke-location=${_GKE_LOCATION}
+      - --gke-project=${_GKE_PROJECT}
+      - --namespace=${_NAMESPACE}
+      - --run-project=${_RUN_PROJECT}
+      - --run-region=${_RUN_REGION}
+      - --deploy-tools-image=${_DEPLOY_TOOLS_IMAGE}
+      - --run-verify-image=${_RUN_VERIFY_IMAGE}
+      - --backend-repository-resource=${_BACKEND_REPOSITORY_RESOURCE}
+      - --release-suffix=${_RELEASE_SUFFIX}

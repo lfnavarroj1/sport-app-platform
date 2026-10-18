@@ -50,7 +50,6 @@ pubsub = {
 }
 
 artifact_registry = {
-  repository_id              = "sportapp"
   immutable_tags             = true
   keep_recent_versions       = 30
   delete_untagged_after_days = 30

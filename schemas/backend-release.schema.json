@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lfnavarroj1/sport-app-platform/schemas/backend-release.schema.json",
+  "title": "backend-release.json",
+  "description": "Evidencia que publica cloudbuild.release.yaml de sport-app-backend (scripts/release.py, modo publication) y que acepta el promotor de la plataforma. Las imágenes se identifican por digest: el sha256 de cada una es su checksum de contenido.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "repository", "version", "tag", "commit", "contractVersion", "contracts", "builtAt", "build", "images", "testResults"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "backend-release" },
+    "repository": { "const": "https://github.com/lfnavarroj1/sport-app-backend" },
+    "version": { "$ref": "#/$defs/semver" },
+    "tag": { "$ref": "#/$defs/tag" },
+    "commit": { "$ref": "#/$defs/commit" },
+    "contractVersion": {
+      "description": "Versión del OpenAPI de bff-web; el frontend la compara con expectedBffContract.",
+      "$ref": "#/$defs/semver"
+    },
+    "contracts": {
+      "type": "object",
+      "required": ["bff-web"],
+      "additionalProperties": { "$ref": "#/$defs/semver" },
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" }
+    },
+    "builtAt": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$" },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["system", "id"],
+      "properties": {
+        "system": { "const": "cloud-build" },
+        "id": { "type": "string", "pattern": "^[0-9a-f-]{8,64}$" }
+      }
+    },
+    "images": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["users-management", "affiliation-management", "complementary-services", "training-management", "events-management", "third-party-management", "bff-web", "bff-mobile"],
+      "properties": {
+        "users-management": { "type": "string", "pattern": "^[a-z0-9-]+-docker\\.pkg\\.dev/[a-z][a-z0-9-]+/sportapp-backend/users-management@sha256:[0-9a-f]{64}$" },
+        "affiliation-management": { "type": "string", "pattern": "^[a-z0-9-]+-docker\\.pkg\\.dev/[a-z][a-z0-9-]+/sportapp-backend/affiliation-management@sha256:[0-9a-f]{64}$" },
+        "complementary-services": { "type": "string", "pattern": "^[a-z0-9-]+-docker\\.pkg\\.dev/[a-z][a-z0-9-]+/sportapp-backend/complementary-services@sha256:[0-9a-f]{64}$" },
+        "training-management": { "type": "string", "pattern": "^[a-z0-9-]+-docker\\.pkg\\.dev/[a-z][a-z0-9-]+/sportapp-backend/training-management@sha256:[0-9a-f]{64}$" },
+        "events-management": { "type": "string", "pattern": "^[a-z0-9-]+-docker\\.pkg\\.dev/[a-z][a-z0-9-]+/sportapp-backend/events-management@sha256:[0-9a-f]{64}$" },
+        "third-party-management": { "type": "string", "pattern": "^[a-z0-9-]+-docker\\.pkg\\.dev/[a-z][a-z0-9-]+/sportapp-backend/third-party-management@sha256:[0-9a-f]{64}$" },
+        "bff-web": { "type": "string", "pattern": "^[a-z0-9-]+-docker\\.pkg\\.dev/[a-z][a-z0-9-]+/sportapp-backend/bff-web@sha256:[0-9a-f]{64}$" },
+        "bff-mobile": { "type": "string", "pattern": "^[a-z0-9-]+-docker\\.pkg\\.dev/[a-z][a-z0-9-]+/sportapp-backend/bff-mobile@sha256:[0-9a-f]{64}$" }
+      }
+    },
+    "testResults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "suites", "coverage"],
+      "properties": {
+        "status": { "const": "passed" },
+        "suites": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["unit", "integration", "contract", "component"],
+          "properties": {
+            "unit": { "$ref": "#/$defs/suite" },
+            "integration": { "$ref": "#/$defs/suite" },
+            "contract": { "$ref": "#/$defs/suite" },
+            "component": { "$ref": "#/$defs/suite" }
+          }
+        },
+        "coverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["line", "branch", "threshold"],
+          "properties": {
+            "line": { "type": "number", "minimum": 0, "maximum": 100 },
+            "branch": { "type": "number", "minimum": 0, "maximum": 100 },
+            "threshold": { "type": "number", "minimum": 0, "maximum": 100 }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "semver": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$" },
+    "tag": { "type": "string", "pattern": "^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$" },
+    "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "suite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "tests", "skipped"],
+      "properties": {
+        "status": { "const": "passed" },
+        "tests": { "type": "integer", "minimum": 1 },
+        "skipped": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

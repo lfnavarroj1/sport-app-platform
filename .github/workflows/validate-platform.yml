@@ -1,0 +1,86 @@
+# Validación de sport-app-platform en GitHub Actions.
+#
+# Solo valida: Markdown, YAML, JSON, scripts y Terraform con backend
+# deshabilitado y proveedores simulados. No se autentica contra GCP, no accede
+# al estado remoto, no ejecuta planes reales ni aplica Terraform y no inicia
+# Cloud Build ni Cloud Deploy. Sin id-token, sin secretos y sin variables GCP:
+# Terraform de producción se ejecuta solo desde la estación del operador.
+name: validate-platform
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-platform-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  archivos:
+    name: Markdown, YAML, JSON y scripts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          submodules: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Dependencias de prueba
+        run: python -m pip install --disable-pip-version-check jsonschema==4.23.0 pyyaml==6.0.2
+      - name: JSON, YAML y enlaces de Markdown
+        run: python scripts/validate_repo.py
+      - name: Promotor, esquemas y políticas
+        run: python -m unittest discover -s tests -v
+
+  terraform:
+    name: Terraform (${{ matrix.root }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        root:
+          - bootstrap/gcp-state
+          - environments/local
+          - environments/production
+          - environments/production-workloads
+          - environments/delivery
+          - modules/gcp/platform
+          - modules/gcp/cloud-run
+          - modules/gcp/pubsub
+          - modules/gcp/pubsub-consumer
+          - modules/gcp/observability
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          submodules: false
+      # Las pruebas que renderizan los manifiestos del backend leen el clon
+      # hermano ../backend (repositorio público, solo lectura).
+      - uses: actions/checkout@v4
+        with:
+          repository: lfnavarroj1/sport-app-backend
+          ref: develop
+          path: components/backend
+          persist-credentials: false
+      - name: Clon hermano del backend
+        run: ln -s "$GITHUB_WORKSPACE/components/backend" "$GITHUB_WORKSPACE/../backend"
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.5
+          terraform_wrapper: false
+      - name: Formato
+        run: terraform fmt -check -recursive infra/terraform
+      - name: Validación y pruebas con proveedores simulados
+        working-directory: infra/terraform/${{ matrix.root }}
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+          terraform test

@@ -6,9 +6,13 @@ variable "project_id" {
 }
 
 variable "impersonate_service_account" {
-  description = "Cuenta tf-apply-* a impersonar en local; null en CI con WIF."
+  description = "Cuenta tf-apply-production (o tf-plan-production para revisar) que el operador impersona desde su estación. Ninguna automatización ejecuta esta raíz."
   type        = string
-  default     = null
+
+  validation {
+    condition     = can(regex("^tf-(apply|plan)-production@[a-z][a-z0-9-]+\\.iam\\.gserviceaccount\\.com$", var.impersonate_service_account))
+    error_message = "Terraform de producción se ejecuta impersonando tf-apply-production o tf-plan-production; sin impersonación no hay forma autorizada de aplicarlo."
+  }
 }
 
 variable "alert_emails" {
@@ -26,10 +30,23 @@ variable "gke_authorized_networks" {
   default = []
 }
 
-variable "artifact_registry_writers" {
-  description = "Pipelines que publican imágenes (serviceAccount:... o principalSet:...)."
-  type        = map(string)
-  default     = {}
+variable "delivery_identities" {
+  description = "Salida delivery_identities del bootstrap: cuentas de Cloud Build, promoción y Cloud Deploy del proyecto de gestión."
+  type = object({
+    build_backend    = string
+    build_frontend   = string
+    release_promoter = string
+    deploy_execution = string
+  })
+}
+
+variable "binary_authorization" {
+  description = "Binary Authorization para GKE y Cloud Run; deshabilitada hasta que existan attestations válidas."
+  type = object({
+    enabled   = bool
+    attestors = optional(list(string), [])
+  })
+  default = { enabled = false }
 }
 
 variable "labels" {
@@ -117,7 +134,6 @@ variable "pubsub" {
 variable "artifact_registry" {
   description = "Repositorio de imágenes y su limpieza."
   type = object({
-    repository_id              = string
     immutable_tags             = bool
     keep_recent_versions       = number
     delete_untagged_after_days = number

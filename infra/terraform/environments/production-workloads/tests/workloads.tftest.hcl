@@ -1,23 +1,24 @@
-# Pruebas de plan sin credenciales ni clúster: google y kubernetes simulados,
-# estado de environments/production reemplazado y Kustomize real sobre el clon
-# del backend (carpeta hermana de platform). Ejecutar:
+# Pruebas de plan sin credenciales ni clúster: kubernetes simulado, estado de
+# environments/production reemplazado y Kustomize real sobre el clon del
+# backend (carpeta hermana de platform). Ejecutar:
 #   terraform init -backend=false
 #   terraform test
 
-# google real con un token ficticio: google_client_config no contacta a Google.
+# google real con un token ficticio: google_client_config no contacta a Google
+# y, con sync_secrets = false, no se lee Secret Manager.
 provider "google" {
   project      = "sportapp-test"
   region       = "us-central1"
   access_token = "token-de-prueba"
 }
+
 mock_provider "kubernetes" {}
 
 override_data {
   target = data.terraform_remote_state.platform
   values = {
     outputs = {
-      artifact_registry_url = "us-central1-docker.pkg.dev/sportapp-test/sportapp"
-      gke                   = { name = "sportapp-prod-gke", location = "us-central1", dns_endpoint = "gke-0000.us-central1.gke.goog", namespace = "sportapp" }
+      gke = { name = "sportapp-prod-gke", location = "us-central1", dns_endpoint = "gke-0000.us-central1.gke.goog", namespace = "sportapp", cluster_id = "projects/sportapp-test/locations/us-central1/clusters/sportapp-prod-gke" }
       # Mismas KSA que gke_workloads de modules/gcp/platform.
       gke_workload_identities = {
         "users-management"                          = "gke-users-api@sportapp-test.iam.gserviceaccount.com"
@@ -63,91 +64,58 @@ override_data {
         health_data_consent_version          = "consentimiento-prueba.v1"
         affiliation_expected_catalog_version = "plans-2026-10-13.v1"
       }
+      delivery_identities = {
+        build_backend    = "cloud-build-backend@sportapp-mgmt-test.iam.gserviceaccount.com"
+        build_frontend   = "cloud-build-frontend@sportapp-mgmt-test.iam.gserviceaccount.com"
+        release_promoter = "release-promoter@sportapp-mgmt-test.iam.gserviceaccount.com"
+        deploy_execution = "cloud-deploy-execution@sportapp-mgmt-test.iam.gserviceaccount.com"
+      }
     }
   }
 }
 
-# El plan de recursos no contacta el clúster: se prueba lo que Kustomize renderiza.
+# El plan de los Services no contacta el clúster: se prueba lo que Kustomize renderiza.
 override_resource {
-  target = kustomization_resource.config
-}
-
-override_resource {
-  target = kustomization_resource.workloads
+  target = kustomization_resource.services
 }
 
 variables {
-  project_id   = "sportapp-test"
-  state_bucket = "sportapp-mgmt-test-tfstate"
+  project_id                  = "sportapp-test"
+  state_bucket                = "sportapp-mgmt-test-tfstate-production"
+  impersonate_service_account = "tf-apply-production@sportapp-mgmt-test.iam.gserviceaccount.com"
+  backend_path                = "../../../../../backend"
   # Sin credenciales no se puede leer Secret Manager; el check lo advierte.
   sync_secrets = false
-  backend_path = "../../../../../backend"
-  image_digests = {
-    users-management       = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
-    affiliation-management = "sha256:2222222222222222222222222222222222222222222222222222222222222222"
-    complementary-services = "sha256:3333333333333333333333333333333333333333333333333333333333333333"
-    training-management    = "sha256:4444444444444444444444444444444444444444444444444444444444444444"
-    events-management      = "sha256:5555555555555555555555555555555555555555555555555555555555555555"
-    third-party-management = "sha256:6666666666666666666666666666666666666666666666666666666666666666"
-  }
 }
 
-run "despliegue_completo_en_gke" {
+run "base_kubernetes_sin_cargas" {
   command = plan
 
   # sync_secrets = false: el check advierte que los Secrets no se gestionan.
   expect_failures = [check.secrets_sincronizados]
 
-  # Vista de despliegue: servicios core y workers CQRS en GKE; los BFF van a Cloud Run.
+  # Terraform no administra Deployments ni Jobs: los aplica Cloud Deploy.
   assert {
-    condition = toset(output.workloads) == toset([
-      "users-management", "users-management-outbox-publisher", "users-management-read-projector",
-      "affiliation-management", "affiliation-management-free-plan-consumer", "affiliation-management-outbox-publisher",
-      "complementary-services", "complementary-services-outbox-publisher",
-      "training-management", "training-management-outbox-publisher", "training-management-read-projector",
-      "events-management", "events-management-outbox-publisher", "events-management-read-projector",
-      "third-party-management",
+    condition     = alltrue([for id in keys(kustomization_resource.services) : startswith(id, "_/Service/")]) && length(kustomization_resource.services) > 0
+    error_message = "production-workloads solo aplica Services; apps/* y batch/* pertenecen a Cloud Deploy."
+  }
+
+  assert {
+    condition = toset(output.services) == toset([
+      "users-management", "affiliation-management", "complementary-services",
+      "training-management", "events-management", "third-party-management",
     ])
-    error_message = "GKE recibe todos los Deployments del backend salvo bff-web y bff-mobile."
+    error_message = "Terraform administra los Services del backend en GKE, sin los de bff-web y bff-mobile."
   }
 
+  # El render contiene Deployments y Jobs del backend (Cloud Deploy los aplica);
+  # ninguno entra en los recursos de esta raíz.
   assert {
-    condition     = length(output.migrations) == 8 && length(kubernetes_manifest.migration) == 8
-    error_message = "Los 8 Jobs de migración del backend se aplican y se esperan antes de las cargas."
-  }
-
-  assert {
-    condition     = alltrue([for k in keys(data.kustomization_overlay.backend.manifests) : !strcontains(k, "/bff-")])
-    error_message = "bff-web y bff-mobile no se despliegan en GKE."
-  }
-
-  # Workload Identity: cada carga y cada Job tienen su KSA, y la KSA existe.
-  assert {
-    condition = alltrue([
-      for id in local.ids_workload : (
-        jsondecode(data.kustomization_overlay.backend.manifests[id]).spec.template.spec.serviceAccountName == jsondecode(data.kustomization_overlay.backend.manifests[id]).metadata.name &&
-        contains(keys(local.identities), jsondecode(data.kustomization_overlay.backend.manifests[id]).metadata.name)
-      )
-    ])
-    error_message = "Cada Deployment usa la KSA de su nombre y esa KSA tiene identidad en GCP."
-  }
-
-  assert {
-    condition = alltrue([
-      for id in local.ids_jobs : contains(keys(local.identities), jsondecode(data.kustomization_overlay.backend.manifests[id]).spec.template.spec.serviceAccountName) &&
-      endswith(jsondecode(data.kustomization_overlay.backend.manifests[id]).spec.template.spec.serviceAccountName, "-migrate")
-    ])
-    error_message = "Cada Job de migración usa la KSA de migración de su servicio."
-  }
-
-  assert {
-    condition = alltrue([
-      for id in setunion(local.ids_workload, local.ids_jobs) : alltrue([
-        for c in jsondecode(data.kustomization_overlay.backend.manifests[id]).spec.template.spec.containers :
-        startswith(c.image, "us-central1-docker.pkg.dev/sportapp-test/sportapp/") && strcontains(c.image, "@sha256:")
-      ])
-    ])
-    error_message = "Todas las imágenes vienen de Artifact Registry y se fijan por digest."
+    condition = (
+      length([for id in local.ids_rendered : id if can(regex("^(apps|batch)/", id))]) > 0 &&
+      length([for id in keys(kustomization_resource.services) : id if can(regex("^(apps|batch)/", id))]) == 0
+    )
+    error_message = "Ningún Deployment, Job de migración o digest promovido queda bajo Terraform."
   }
 
   assert {
@@ -169,50 +137,42 @@ run "despliegue_completo_en_gke" {
   }
 
   assert {
-    condition = alltrue([
-      for name in local.gke_components : jsondecode(data.kustomization_overlay.backend.manifests["apps/Deployment/sportapp/${name}"]).spec.replicas == 2
-    ])
-    error_message = "Cada API corre con dos réplicas."
-  }
-
-  assert {
-    condition = alltrue([
-      for literal in [
-        "APP_ENV=production",
-        "DATABASE_HOST=10.20.0.3",
-        "PUBSUB_PROJECT_ID=sportapp-test",
-        "REGISTRATION_POLICIES_VERSION=sportapp-c108-c108plus.v1",
-        "HEALTH_DATA_CONSENT_VERSION=consentimiento-prueba.v1",
-        "AFFILIATION_EXPECTED_CATALOG_VERSION=plans-2026-10-13.v1",
-      ] : contains(data.kustomization_overlay.backend.config_map_generator[0].literals, literal)
-    ]) && alltrue([for l in data.kustomization_overlay.backend.config_map_generator[0].literals : !startswith(l, "PUBSUB_EMULATOR_HOST")])
-    error_message = "sportapp-runtime usa Cloud SQL privado, Pub/Sub administrado y las versiones del ambiente."
-  }
-
-  assert {
-    condition = anytrue([
-      for e in jsondecode(data.kustomization_overlay.backend.manifests["apps/Deployment/sportapp/affiliation-management"]).spec.template.spec.containers[0].env :
-      e.name == "AFFILIATION_EXPECTED_CATALOG_VERSION" && try(e.valueFrom.configMapKeyRef.key, "") == "AFFILIATION_EXPECTED_CATALOG_VERSION" && try(e.value, null) == null
-    ])
-    error_message = "affiliation-management toma el catálogo esperado de sportapp-runtime."
+    condition = (
+      kubernetes_config_map_v1.runtime.metadata[0].name == "sportapp-runtime" &&
+      kubernetes_config_map_v1.runtime.data["APP_ENV"] == "production" &&
+      kubernetes_config_map_v1.runtime.data["DATABASE_HOST"] == "10.20.0.3" &&
+      kubernetes_config_map_v1.runtime.data["AFFILIATION_EXPECTED_CATALOG_VERSION"] == "plans-2026-10-13.v1" &&
+      !contains(keys(kubernetes_config_map_v1.runtime.data), "PUBSUB_EMULATOR_HOST")
+    )
+    error_message = "sportapp-runtime (nombre fijo) usa Cloud SQL privado, Pub/Sub administrado y las versiones del ambiente."
   }
 
   assert {
     condition     = toset(keys(kubernetes_service_account_v1.workload)) == toset(keys(local.identities))
-    error_message = "Se crea una KSA por identidad de carga."
-  }
-}
-
-run "rechaza_imagen_sin_digest" {
-  command = plan
-
-  variables {
-    image_digests = {
-      users-management = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
-    }
+    error_message = "Se crea una KSA por identidad de carga y por migración."
   }
 
-  expect_failures = [var.image_digests, check.secrets_sincronizados]
+  # RBAC de Cloud Deploy: solo el namespace, sin borrar ni leer secretos.
+  assert {
+    condition = (
+      kubernetes_role_binding_v1.cloud_deploy.subject[0].kind == "User" &&
+      kubernetes_role_binding_v1.cloud_deploy.subject[0].name == "cloud-deploy-execution@sportapp-mgmt-test.iam.gserviceaccount.com" &&
+      kubernetes_role_binding_v1.cloud_deploy.role_ref[0].kind == "Role"
+    )
+    error_message = "cloud-deploy-execution opera con un Role del namespace, nunca con un ClusterRole."
+  }
+
+  assert {
+    condition = alltrue([
+      for rule in kubernetes_role_v1.cloud_deploy.rule : (
+        !contains(rule.verbs, "delete") && !contains(rule.verbs, "deletecollection") && !contains(rule.verbs, "*") &&
+        !contains(rule.resources, "secrets") && !contains(rule.resources, "configmaps") &&
+        !contains(rule.resources, "roles") && !contains(rule.resources, "rolebindings") &&
+        !contains(rule.resources, "serviceaccounts") && !contains(rule.resources, "services")
+      )
+    ])
+    error_message = "Cloud Deploy no borra objetos ni modifica Secrets, ConfigMaps, RBAC, KSA o Services."
+  }
 }
 
 run "rechaza_backend_inexistente" {
@@ -223,4 +183,14 @@ run "rechaza_backend_inexistente" {
   }
 
   expect_failures = [data.kustomization_overlay.backend, check.secrets_sincronizados]
+}
+
+run "rechaza_ejecucion_sin_impersonar_terraform" {
+  command = plan
+
+  variables {
+    impersonate_service_account = "cloud-deploy-execution@sportapp-mgmt-test.iam.gserviceaccount.com"
+  }
+
+  expect_failures = [var.impersonate_service_account, check.secrets_sincronizados]
 }

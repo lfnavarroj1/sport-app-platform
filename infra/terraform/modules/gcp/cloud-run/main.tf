@@ -1,5 +1,10 @@
 # Servicio Cloud Run con identidad propia, imagen por digest y, si se indica,
 # salida directa a la VPC para alcanzar servicios internos de GKE.
+#
+# Propiedad: Terraform administra el servicio base (identidad, red, variables,
+# secretos, escalado, sondas y acceso). La imagen solo se usa para crear la
+# primera revisión; después Cloud Deploy administra imagen, revisión y tráfico,
+# y Terraform no los reconcilia (lifecycle.ignore_changes).
 
 terraform {
   required_providers {
@@ -16,6 +21,13 @@ resource "google_cloud_run_v2_service" "this" {
   location            = var.region
   ingress             = var.ingress
   deletion_protection = var.deletion_protection
+
+  dynamic "binary_authorization" {
+    for_each = var.binary_authorization_enabled ? [1] : []
+    content {
+      use_default = true
+    }
+  }
 
   template {
     service_account                  = var.service_account
@@ -100,6 +112,36 @@ resource "google_cloud_run_v2_service" "this" {
       }
     }
   }
+
+  # Solo los campos que escribe un rollout de Cloud Deploy:
+  # - la imagen de la revisión (el digest promovido);
+  # - el nombre de la revisión y la asignación de tráfico;
+  # - etiquetas y anotaciones de la plantilla con los datos de la release;
+  # - el cliente que hizo el último despliegue.
+  # Cualquier otro campo (variables, identidad, red, escalado, sondas) sigue
+  # bajo Terraform y un cambio se detecta y aplica.
+  lifecycle {
+    ignore_changes = [
+      template[0].containers[0].image,
+      template[0].revision,
+      template[0].labels,
+      template[0].annotations,
+      traffic,
+      client,
+      client_version,
+    ]
+  }
+}
+
+# Cloud Deploy publica revisiones en este servicio; no administra ningún otro.
+resource "google_cloud_run_v2_service_iam_member" "deployers" {
+  for_each = var.deployer_members
+
+  project  = var.project_id
+  location = google_cloud_run_v2_service.this.location
+  name     = google_cloud_run_v2_service.this.name
+  role     = "roles/run.developer"
+  member   = each.value
 }
 
 resource "google_cloud_run_v2_service_iam_member" "public" {
@@ -115,4 +157,9 @@ resource "google_cloud_run_v2_service_iam_member" "public" {
 output "uri" {
   description = "URL pública del servicio."
   value       = google_cloud_run_v2_service.this.uri
+}
+
+output "name" {
+  description = "Nombre del servicio."
+  value       = google_cloud_run_v2_service.this.name
 }

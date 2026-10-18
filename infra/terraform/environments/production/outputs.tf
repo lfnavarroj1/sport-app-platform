@@ -1,6 +1,16 @@
-output "artifact_registry_url" {
-  description = "Prefijo para publicar y referenciar imágenes."
-  value       = module.platform.artifact_registry_url
+output "artifact_registry_urls" {
+  description = "Prefijo de imágenes por repositorio: backend y frontend."
+  value       = module.platform.artifact_registry_urls
+}
+
+output "delivery_identities" {
+  description = "Identidades de entrega autorizadas en producción."
+  value       = module.platform.delivery_identities
+}
+
+output "cloud_run_deploy_config" {
+  description = "Configuración de cada servicio de Cloud Run para los targets de Cloud Deploy (environments/delivery)."
+  value       = module.platform.cloud_run_deploy_config
 }
 
 output "gke" {

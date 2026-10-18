@@ -45,6 +45,12 @@ resource "google_container_cluster" "this" {
     channel = var.release_channel
   }
 
+  # Binary Authorization (deshabilitada hasta que existan attestations válidas):
+  # habilitada, el clúster aplica la política única del proyecto.
+  binary_authorization {
+    evaluation_mode = var.binary_authorization_enabled ? "PROJECT_SINGLETON_POLICY_ENFORCE" : "DISABLED"
+  }
+
   ip_allocation_policy {
     cluster_secondary_range_name  = var.pods_range_name
     services_secondary_range_name = var.services_range_name
@@ -55,7 +61,7 @@ resource "google_container_cluster" "this" {
     enable_private_endpoint = false
   }
 
-  # El endpoint DNS se autoriza con IAM y permite operar desde CI sin abrir IPs.
+  # El endpoint DNS se autoriza con IAM: lo usan el operador y Cloud Deploy sin abrir IPs.
   # El endpoint IP queda limitado a las redes autorizadas (vacío = ninguna externa).
   control_plane_endpoints_config {
     dns_endpoint_config {

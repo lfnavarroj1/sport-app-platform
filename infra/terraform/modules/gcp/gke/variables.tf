@@ -79,3 +79,9 @@ variable "labels" {
   type        = map(string)
   default     = {}
 }
+
+variable "binary_authorization_enabled" {
+  description = "Aplica la política de Binary Authorization del proyecto a las cargas del clúster."
+  type        = bool
+  default     = false
+}

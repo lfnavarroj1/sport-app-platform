@@ -81,13 +81,17 @@ sport-app-platform/
 │   │   │   ├── local/
 │   │   │   └── gcp/
 │   │   └── environments/
-│   │       ├── local/          # desarrollo (Docker Desktop)
-│   │       ├── staging/        # pendiente
-│   │       └── production/
+│   │       ├── local/                  # desarrollo (Docker Desktop)
+│   │       ├── staging/                # pendiente
+│   │       ├── production/             # infraestructura GCP
+│   │       ├── production-workloads/   # base Kubernetes en GKE (sin Deployments ni Jobs)
+│   │       └── delivery/               # Cloud Build y Cloud Deploy (proyecto de gestión)
 │   ├── kubernetes/
-│   │   ├── local/              # dependencias compartidas de desarrollo
-│   │   └── production/         # pendiente
+│   │   └── local/              # dependencias compartidas de desarrollo
 │   └── policies/
+├── deploy/clouddeploy/         # allowlist, Skaffold, overlay GKE y Cloud Run (entrega)
+├── cloudbuild.promote.yaml     # promotor (trigger manual interno)
+├── scripts/promote_release.py
 ├── orchestration/local/
 └── release-manifest.yaml
 ```
@@ -151,7 +155,10 @@ El estado local es desechable y se excluye de Git. Este ambiente prueba composic
 
 ```mermaid
 flowchart TB
-    GH[GitHub Actions mediante OIDC/WIF]
+    GH[GitHub<br/>CI sin identidad GCP]
+    OP[Operador autorizado<br/>ADC e impersonación]
+    CB[Cloud Build<br/>cuentas internas]
+    CD[Cloud Deploy<br/>aprobación obligatoria]
     TF[Terraform del ambiente]
     STATE[(Estado GCS separado<br/>proyecto de gestión)]
 
@@ -175,16 +182,23 @@ flowchart TB
       OBS[Logging y Monitoring]
     end
 
-    GH --> TF
+    GH -. conexión de lectura .-> CB
+    OP --> TF
     TF <--> STATE
     TF --> NET
     TF --> AR
+    TF --> CB
+    TF --> CD
     TF --> RUN
     TF --> GKE
     TF --> SQL
     TF --> PS
     TF --> SM
     TF --> OBS
+    CB --> AR
+    AR --> CD
+    CD --> RUN
+    CD --> GKE
     AR -. imágenes por digest .-> RUN
     AR -. imágenes por digest .-> GKE
     GKE -. cada dominio solo su base .-> SQL
@@ -212,7 +226,7 @@ La topología física está decidida en ADR-023 de la documentación de arquitec
 | `staging` (pendiente) | GCS exclusivo | ambiente protegido y ensayo de release |
 | `production` | GCS exclusivo, protección reforzada | aprobación independiente sobre plan revisado |
 
-El bootstrap crea los buckets de estado, versionado, bloqueo y permisos mínimos. Terraform crea recursos y referencias a secretos, pero no guarda valores secretos. Las imágenes se despliegan por digest tomado de `release-manifest.yaml`.
+El bootstrap crea los buckets de estado, versionado, bloqueo y permisos mínimos. Terraform se ejecuta desde la estación del operador; ningún workflow de GitHub obtiene identidad GCP. Cloud Build construye dentro de GCP y Cloud Deploy promueve por digest con aprobación. Terraform crea recursos y referencias a secretos, pero no guarda valores secretos.
 
 ## Validación y promoción
 
@@ -259,9 +273,11 @@ La deshabilitación de facturación se reserva para una emergencia: Google detie
 
 La decisión y la arquitectura están aprobadas. Desde el 2026-10-10, `infra/terraform/` contiene la raíz `local` (desarrollo en Docker Desktop), el bootstrap (`bootstrap/gcp-state`), los módulos GCP y la raíz `production`. Su uso y los supuestos pendientes se describen en [`infra/terraform/README.md`](../infra/terraform/README.md).
 
-Antes del primer `apply`, complete la [Preparación local y de GCP para Terraform](preparacion-terraform-local-gcp.md): activar el clúster kubeadm local o preparar proyectos, credenciales, estado y presupuesto de GCP.
+Antes del primer `apply`, complete la guía correspondiente: [preparación local](preparacion-terraform-local.md) para activar kubeadm o [preparación de GCP](preparacion-terraform-gcp.md) para proyectos, estado, identidades internas, Cloud Build y Cloud Deploy sin autenticación GCP desde GitHub.
 
-La raíz `local` se aplicó en Docker Desktop y se verificó con un registro de usuario de punta a punta (BFF, servicio, PostgreSQL, outbox y Pub/Sub). La raíz de producción se verificó con `terraform validate` y `terraform test` con proveedores simulados, pero todavía no se ha aplicado en GCP. Siguen pendientes `staging`, los workflows y el overlay Kubernetes de producción.
+La raíz `local` se aplicó en Docker Desktop y se verificó con un registro de usuario de punta a punta (BFF, servicio, PostgreSQL, outbox y Pub/Sub). Desde el 2026-10-18 existen también `production-workloads` (base Kubernetes), `delivery` (Cloud Build y Cloud Deploy con aprobación) y la configuración de entrega en `deploy/clouddeploy`; el bootstrap ya no crea WIF para GitHub. Todo se verificó con `terraform validate`, `terraform test` con proveedores simulados y pruebas de scripts, pero todavía no se ha aplicado en GCP. Siguen pendientes `staging` y la decisión de la capa de borde.
+
+Propiedad: Terraform administra infraestructura, identidades, configuración compartida, Services, RBAC, pipelines y targets; Cloud Deploy administra imágenes, revisiones, tráfico, Deployments y Jobs. Ningún campo tiene dos dueños ([preparación de GCP, sección 6.4](preparacion-terraform-gcp.md#64-separar-propiedad-terraformcloud-deploy)).
 
 ## Referencias
 

@@ -39,13 +39,8 @@ Desarrollo no usa GCP ni credenciales en la nube. Implementa la [arquitectura Te
    - [6.5 Ejecutar el bootstrap](#65-ejecutar-el-bootstrap)
    - [6.6 Crear producción](#66-crear-producción)
    - [6.7 Cambios posteriores](#67-cambios-posteriores)
-7. [Producción desde GitHub Actions](#7-producción-desde-github-actions)
+7. [Producción sin acceso GCP desde GitHub](#7-producción-sin-acceso-gcp-desde-github)
 8. [Cómo llegan backend y frontend a producción](#8-cómo-llegan-backend-y-frontend-a-producción)
-   - [8.1 El ciclo completo](#81-el-ciclo-completo)
-   - [8.2 Publicar la imagen](#82-publicar-la-imagen)
-   - [8.3 Desplegar en Cloud Run](#83-desplegar-en-cloud-run)
-   - [8.4 Desplegar en GKE](#84-desplegar-en-gke)
-   - [8.5 Resumen por evento](#85-resumen-por-evento)
 9. [Pruebas](#9-pruebas)
 10. [Solución de problemas](#10-solución-de-problemas)
 11. [Supuestos y pendientes](#11-supuestos-y-pendientes)
@@ -58,18 +53,20 @@ Desarrollo no usa GCP ni credenciales en la nube. Implementa la [arquitectura Te
 
 | Quiero… | Sección |
 | --- | --- |
-| Dejar lista mi plataforma por primera vez (activar Kubernetes kubeadm, o crear proyectos GCP y completar los archivos de credenciales) | [guía de preparación](../../docs/preparacion-terraform-local-gcp.md) |
+| Dejar listo desarrollo local | [preparación local](../../docs/preparacion-terraform-local.md) |
+| Preparar producción, identidades y entrega sin acceso GCP desde GitHub | [preparación de GCP](../../docs/preparacion-terraform-gcp.md) |
 | Levantar SportApp completo en mi equipo | [4](#4-desarrollo-local-paso-a-paso) |
 | Probar un cambio del backend en desarrollo | [5.1](#51-cambió-el-código-del-backend) |
 | Conectar el frontend al backend local | [5.3](#53-frontend-web) |
 | Depurar un microservicio desde el IDE con la base de datos y Pub/Sub locales | [4.6](#46-ejecutar-un-componente-en-el-host) |
 | Crear o cambiar la infraestructura de producción | [6](#6-producción-en-gcp-paso-a-paso) |
 | Publicar una versión en producción | [8](#8-cómo-llegan-backend-y-frontend-a-producción) |
-| Apagar o volver a encender un ambiente (suspender o destruir producción) | [guía de preparación, sección 9](../../docs/preparacion-terraform-local-gcp.md#9-apagar-y-volver-a-encender) |
+| Apagar o volver a encender el ambiente local | [preparación local, sección 11](../../docs/preparacion-terraform-local.md#11-pausar-o-eliminar-el-ambiente) |
+| Suspender, reanudar o destruir producción | [preparación de GCP, sección 15](../../docs/preparacion-terraform-gcp.md#15-suspender-reanudar-y-destruir) |
 
 ### 1.2 Conceptos mínimos
 
-- **Raíz:** carpeta donde se ejecuta `terraform`. Hay cuatro: `environments/local`, `environments/production`, `environments/production-workloads` (cargas en GKE) y `bootstrap/gcp-state` (preparación de producción). Cada una tiene su propio estado.
+- **Raíz:** carpeta donde se ejecuta `terraform`. Hay cinco: `environments/local`, `bootstrap/gcp-state` (preparación de producción), `environments/production` (infraestructura), `environments/production-workloads` (base Kubernetes en GKE) y `environments/delivery` (Cloud Build y Cloud Deploy). Cada una tiene su propio estado y solo se ejecuta desde la estación del operador.
 - **Estado:** registro de lo que administra Terraform. El de desarrollo es un archivo local ignorado por Git; el de producción está en un bucket GCS.
 - **Plan / apply:** `plan` muestra qué cambiaría y `apply` lo ejecuta. Con `-out` se aplica exactamente el plan revisado.
 - **Imagen y tag:** el backend se entrega como imágenes de contenedor `sportapp/<componente>:<tag>`. En desarrollo se usan imágenes construidas en tu Docker; en producción, imágenes de Artifact Registry identificadas por su digest (`@sha256:…`).
@@ -85,7 +82,7 @@ Desarrollo no usa GCP ni credenciales en la nube. Implementa la [arquitectura Te
 | Contraseñas | generadas, en el Secret `sportapp-database` | generadas, en Secret Manager |
 | Imágenes | locales, por tag (`local` por defecto) | Artifact Registry, por digest |
 | Estado Terraform | `terraform.tfstate` local | bucket GCS en el proyecto de gestión |
-| Credenciales | ninguna | ADC con impersonación o WIF; nunca llaves JSON |
+| Credenciales | ninguna | ADC del operador e impersonación de `tf-apply-production`; GitHub no obtiene identidad GCP y no hay llaves JSON |
 
 En ambos ambientes se usan los mismos nombres: bases `usuarios_write/read`, `afiliacion`, `servicios`, `entrenamientos_write/read` y `eventos_write/read`, y tópicos `sportapp.{usuarios,afiliacion,servicios,entrenamientos,eventos}.v1`. Gracias a eso, el código que funciona en local funciona igual en producción. Cada suscripción entrega en orden, espera de 10 a 600 s entre reintentos y tiene una DLQ con su suscripción operativa `<DLQ>.ops`:
 
@@ -135,19 +132,23 @@ infra/
 └── terraform/
     ├── environments/
     │   ├── local/                 # DESARROLLO: Docker Desktop
-    │   ├── production/            # PRODUCCIÓN: infraestructura GCP (red, GKE, Cloud SQL, Pub/Sub, Cloud Run…)
-    │   └── production-workloads/  # PRODUCCIÓN: cargas del backend en GKE (estado propio)
-    ├── bootstrap/gcp-state/       # una vez, antes de producción: estado, WIF, cuentas, presupuestos
+    │   ├── production/            # PRODUCCIÓN: infraestructura GCP (red, GKE, Cloud SQL, Pub/Sub, Cloud Run base…)
+    │   ├── production-workloads/  # PRODUCCIÓN: base Kubernetes (namespace, KSA, Secrets, ConfigMap, Services, RBAC)
+    │   └── delivery/              # PRODUCCIÓN: Cloud Build, evidencia y Cloud Deploy (proyecto de gestión)
+    ├── bootstrap/gcp-state/       # una vez, antes de producción: estado, tf-plan/tf-apply e identidades de entrega
     └── modules/gcp/               # módulos de producción (red, GKE, Cloud SQL, Pub/Sub, Cloud Run…)
+deploy/clouddeploy/                # entrega controlada por la plataforma: allowlist, Skaffold, overlay GKE y Cloud Run
+cloudbuild.promote.yaml            # promotor (trigger manual interno de Cloud Build) → scripts/promote_release.py
+schemas/                           # release-manifest, backend-release y frontend-release
 ```
 
 Cada repositorio conserva lo que le pertenece:
 
 | Repositorio | Aporta | Lo consume Terraform así |
 | --- | --- | --- |
-| backend | código, imágenes y manifiestos `deploy/k8s/base` (Deployments, Services, Jobs de migración) | en local, compone esos manifiestos tal como estén en tu clon; en producción, despliega imágenes por digest |
-| frontend | código Angular, imagen `sportapp/web` y manifiestos `deploy/k8s/base` | en local, compone esos manifiestos desde el clon del frontend; en producción despliega la imagen por digest en Cloud Run |
-| plataforma | PostgreSQL, Pub/Sub, configuración, secretos e infraestructura GCP | — |
+| backend | código, `cloudbuild.release.yaml`, imágenes y manifiestos `deploy/k8s/base` (Deployments, Services, Jobs de migración) | en local, compone esos manifiestos tal como estén en tu clon; en producción, Terraform aplica sus Services y Cloud Deploy sus Deployments y Jobs, en el commit de la release |
+| frontend | código Angular, `cloudbuild.release.yaml`, imagen `sportapp/web` y manifiestos `deploy/k8s/base` | en local, compone esos manifiestos desde el clon del frontend; en producción Cloud Deploy promueve la imagen por digest en Cloud Run |
+| plataforma | PostgreSQL, Pub/Sub, configuración, secretos, infraestructura GCP, triggers, pipelines y promotor | — |
 
 ## 4. Desarrollo local paso a paso
 
@@ -155,7 +156,7 @@ Los comandos son para PowerShell. La raíz se aplica siempre en el contexto `doc
 
 ### 4.1 Requisitos
 
-1. **Kubernetes de Docker Desktop aprovisionado con kubeadm**, en verde. Si es la primera vez, sigue la sección 4 de la [guía de preparación](../../docs/preparacion-terraform-local-gcp.md), que explica cómo activarlo y comprobar que es kubeadm.
+1. **Kubernetes de Docker Desktop aprovisionado con kubeadm**, en verde. Si es la primera vez, sigue la sección 4 de la [preparación local](../../docs/preparacion-terraform-local.md#4-preparar-docker-desktop-y-kubernetes).
 2. **Terraform 1.11 o superior** y **kubectl**:
 
    ```powershell
@@ -364,25 +365,29 @@ PostgreSQL, el emulador, los tópicos y los puertos de acceso están en `infra/k
 | GKE | regional `us-central1`, `e2-standard-4`, 3–9 nodos, Workload Identity |
 | Cloud SQL PostgreSQL 17 | `db-custom-2-7680` regional (HA), PITR, 14 respaldos, protección contra borrado |
 | Pub/Sub | tópicos por dominio CQRS, proyector con reintentos y DLQ |
-| Cloud Run | `web`, `bff-web` y `bff-mobile`, mínimo 1 instancia, imágenes por digest |
+| Cloud Run | `web`, `bff-web` y `bff-mobile`, mínimo 1 instancia; el digest inicial solo crea la primera revisión |
 | Identidad | una cuenta de servicio por carga, con acceso solo a lo de su dominio |
-| Operación | Artifact Registry con limpieza, Secret Manager y alertas |
+| Artifact Registry | `sportapp-backend` y `sportapp-frontend`, tags inmutables y limpieza; cada cuenta de Cloud Build escribe solo en el suyo |
+| Entrega (proyecto de gestión) | Cloud Build por tag, evidencia de releases, promotor y Cloud Deploy con aprobación (`environments/delivery`) |
+| Operación | Secret Manager, alertas y Binary Authorization opcional (deshabilitada) |
 
-El módulo rechaza el plan si falta Cloud SQL regional o PITR. También lo rechaza sin protección contra borrado, salvo en una destrucción controlada con `destroy_confirmation` igual al ID del proyecto ([guía de preparación, sección 9](../../docs/preparacion-terraform-local-gcp.md#9-apagar-y-volver-a-encender)).
+El módulo rechaza el plan si falta Cloud SQL regional o PITR. También lo rechaza sin protección contra borrado, salvo en una [destrucción controlada](../../docs/preparacion-terraform-gcp.md#153-destruir-producción) con `destroy_confirmation` igual al ID del proyecto.
 
 ### 6.2 Variables y credenciales
 
 | Archivo | Contenido | ¿Va a Git? |
 | --- | --- | --- |
-| `environments/production/terraform.tfvars` | tamaños, red, retención y digests de Cloud Run | **sí**, se revisa en PR |
-| `environments/production/gcp.auto.tfvars` (copia de `.example`) | proyecto, cuenta a impersonar, correos, IP del operador y publicadores de imágenes | **no** |
+| `environments/production/terraform.tfvars` | tamaños, red, retención y versiones del ambiente | **sí**, se revisa en PR |
+| `environments/production/gcp.auto.tfvars` (copia de `.example`) | proyecto, cuenta a impersonar, identidades de entrega, correos, IP del operador y digests iniciales de Cloud Run | **no** |
+| `environments/delivery/gcp.auto.tfvars` (copia de `.example`) | proyecto de gestión, aprobadores, imagen de herramientas y estado de la conexión | **no** |
 | `environments/production/backend.hcl` (copia de `.example`) | bucket del estado | **no** |
 | `bootstrap/gcp-state/bootstrap.auto.tfvars` (copia de `.example`) | proyectos, operadores, facturación y presupuesto | **no** |
 
 Ninguno contiene llaves ni contraseñas:
 
 - En tu equipo, Terraform usa tu sesión (`gcloud auth application-default login`) e impersona `tf-apply-production`.
-- En GitHub Actions usa WIF: `tf-plan-production` para cualquier job del repositorio y `tf-apply-production` solo para jobs con `environment: production`.
+- GitHub Actions no se autentica contra GCP y no ejecuta planes ni aplicaciones remotas.
+- Cloud Build y Cloud Deploy usan cuentas internas de GCP separadas, sin capacidad de impersonar `tf-apply-production`.
 - Las contraseñas de Cloud SQL se generan como valores efímeros y se guardan en Secret Manager (`db-password-<dominio>`), nunca en el estado. Para rotarlas, incrementa `cloud_sql.password_version`.
 - Los secretos de aplicación (JWT, Strava) se declaran en `app_secrets` y su valor se carga con `gcloud secrets versions add <secreto> --data-file=<archivo>`.
 
@@ -391,8 +396,8 @@ Ninguno contiene llaves ni contraseñas:
 | `project_id` | proyecto de producción ([6.4](#64-preparar-los-proyectos)) |
 | `impersonate_service_account` | salida `apply_service_accounts` del bootstrap |
 | `bucket` (`backend.hcl`) | salida `state_buckets` del bootstrap |
-| `artifact_registry_writers` | salida `delivery_service_accounts` del bootstrap |
-| `cloud_run_images` | digest publicado ([8.2](#82-publicar-la-imagen)) |
+| `delivery_identities` | salida `delivery_identities` del bootstrap (cuentas de Cloud Build, promoción y ejecución) |
+| `cloud_run_images` | digests de la primera release; después las imágenes las promueve Cloud Deploy ([8](#8-cómo-llegan-backend-y-frontend-a-producción)) |
 
 ### 6.3 Instalar Google Cloud CLI
 
@@ -403,7 +408,7 @@ gcloud version
 
 ### 6.4 Preparar los proyectos
 
-Una sola vez. Se necesitan dos proyectos: **gestión** (estado e identidades; nunca se destruye) y **producción**. Los ID son únicos a nivel global. Puedes definirlos directamente en la terminal o guardarlos en `platform\.env.ps1` (local, ignorado por Git) y cargarlos con `. .\.env.ps1` ([guía de preparación, sección 5.1](../../docs/preparacion-terraform-local-gcp.md#51-decidir-los-identificadores)). El ejemplo usa valores literales.
+Una sola vez. Se necesitan dos proyectos: **gestión** (estado e identidades; nunca se destruye) y **producción**. Los ID son únicos a nivel global. Puedes definirlos directamente en la terminal o guardarlos en `platform\.env.ps1` (local, ignorado por Git) y cargarlos con `. .\.env.ps1`, como explica la [preparación de GCP](../../docs/preparacion-terraform-gcp.md#4-definir-identificadores). El ejemplo usa valores literales.
 
 ```powershell
 gcloud auth login
@@ -417,6 +422,8 @@ gcloud billing projects link sportapp-prod-1234 --billing-account=XXXXXX-XXXXXX-
 Quien ejecute el bootstrap necesita `roles/owner` en ambos proyectos y `roles/billing.costsManager` en la cuenta de facturación para crear el presupuesto.
 
 ### 6.5 Ejecutar el bootstrap
+
+El bootstrap ya no crea Workload Identity Federation ni cuentas `ci-delivery-*`. Si un estado anterior todavía los contiene, sigue antes la [migración del retiro de WIF](../../docs/migracion-retiro-wif-github.md): el plan destruye esos recursos y debe revisarse.
 
 ```powershell
 gcloud auth application-default login
@@ -432,9 +439,9 @@ terraform output
 | Salida | Uso |
 | --- | --- |
 | `state_buckets` | `bucket` en `backend.hcl` |
-| `apply_service_accounts` / `plan_service_accounts` | impersonación local y CI |
-| `delivery_service_accounts` | publicación de imágenes desde backend/frontend |
-| `workload_identity_provider` | todos los workflows |
+| `apply_service_accounts` | impersonación exclusivamente desde la estación del operador (solo `operators`) |
+| `plan_service_accounts` | planes manuales de revisión, de solo lectura (solo `operators`) |
+| `delivery_identities` | `cloud-build-backend`, `cloud-build-frontend`, `release-promoter` y `cloud-deploy-execution`, para `production` y `delivery` |
 
 El estado del bootstrap queda en `terraform.tfstate`, en esa carpeta e ignorado por Git. Respáldalo o mígralo al bucket siguiendo el comentario de `versions.tf`.
 
@@ -481,6 +488,8 @@ El estado del bootstrap queda en `terraform.tfstate`, en esa carpeta e ignorado 
 
 Si `cloud_run_images` está vacío, no se crea ningún servicio Cloud Run. Esto permite crear la infraestructura antes de la primera release.
 
+6. Aplica después, con el mismo procedimiento (plan guardado, revisión y apply del plan), `environments/production-workloads` (base Kubernetes) y `environments/delivery` (Cloud Build y Cloud Deploy). El orden completo, incluida la autorización de la GitHub App, está en la [primera release](../../docs/preparacion-terraform-gcp.md#13-primera-release).
+
 ### 6.7 Cambios posteriores
 
 1. Crea una rama y modifica `terraform.tfvars` o los módulos.
@@ -495,203 +504,62 @@ Si `cloud_run_images` está vacío, no se crea ningún servicio Cloud Run. Esto 
 | Rotar contraseñas | `cloud_sql.password_version` + 1 |
 | Agregar un secreto de aplicación | `app_secrets` |
 | Variables de un BFF | `cloud_run_env` |
-| Versión de un BFF o de la web | `cloud_run_images` ([8.3](#83-desplegar-en-cloud-run)) |
-| Suspender o reanudar producción | `suspended` en `terraform.tfvars` ([guía de preparación, sección 9.2](../../docs/preparacion-terraform-local-gcp.md#92-producción-suspender)) |
-| Destruir producción | `-var deletion_protection=false -var destroy_confirmation=<proyecto>` ([guía de preparación, sección 9.3](../../docs/preparacion-terraform-local-gcp.md#93-producción-destruir)) |
+| Versión de un BFF o de la web | release y rollout aprobado de Cloud Deploy ([8](#8-cómo-llegan-backend-y-frontend-a-producción)) |
+| Suspender o reanudar producción | `suspended` en `terraform.tfvars` ([preparación de GCP, sección 15](../../docs/preparacion-terraform-gcp.md#15-suspender-reanudar-y-destruir)) |
+| Destruir producción | `-var deletion_protection=false -var destroy_confirmation=<proyecto>` ([destrucción controlada](../../docs/preparacion-terraform-gcp.md#153-destruir-producción)) |
 
-## 7. Producción desde GitHub Actions
+## 7. Producción sin acceso GCP desde GitHub
 
-Es la forma prevista de operar después del arranque inicial. El workflow aún no existe en `.github/workflows/`.
+GitHub Actions se limita a CI y validación de releases. No contiene credenciales GCP, no solicita tokens OIDC y no ejecuta `gcloud`, `kubectl` o Terraform.
 
-1. En `sport-app-platform`, crea el Environment `production` con *required reviewers*.
-2. Crea las variables del repositorio con las salidas del bootstrap. Ninguna es secreta: `GCP_WORKLOAD_IDENTITY_PROVIDER`, `PROD_PROJECT_ID`, `PROD_STATE_BUCKET`, `PROD_TF_PLAN_SA`, `PROD_TF_APPLY_SA`, `PROD_ALERT_EMAILS` (JSON) y `PROD_ARTIFACT_REGISTRY_WRITERS` (JSON).
+Terraform se opera únicamente desde la estación autorizada:
 
-   ```powershell
-   gh variable set PROD_TF_APPLY_SA --repo lfnavarroj1/sport-app-platform --body "tf-apply-production@sportapp-mgmt-1234.iam.gserviceaccount.com"
-   ```
+1. autenticación humana con ADC;
+2. impersonación de `tf-apply-production`;
+3. `terraform plan` guardado;
+4. revisión del plan;
+5. `terraform apply` del plan exacto.
 
-3. Configura el workflow de referencia: un PR genera el plan con `tf-plan-production` y un tag de plataforma lo aplica con aprobación. Antes de usarlo, fija `hashicorp/setup-terraform` a un SHA completo.
+Para revisar un plan sin poder aplicarlo, impersona `tf-plan-production` (solo lectura, también limitada a `operators`).
 
-```yaml
-name: terraform-production
+Cloud Build se conecta desde GCP a los repositorios (GitHub App de Cloud Build) para leer tags y construir imágenes. Sus cuentas solo publican en su repositorio de Artifact Registry y escriben su evidencia; no pueden desplegar ni crear infraestructura.
 
-on:
-  pull_request:
-    paths: ["infra/terraform/**"]
-  push:
-    tags: ["v*"]
-
-permissions:
-  contents: read
-  id-token: write
-
-concurrency:
-  group: terraform-production
-  cancel-in-progress: false
-
-env:
-  TF_IN_AUTOMATION: "true"
-  TF_STATE_BUCKET: ${{ vars.PROD_STATE_BUCKET }}
-  TF_VAR_project_id: ${{ vars.PROD_PROJECT_ID }}
-  TF_VAR_alert_emails: ${{ vars.PROD_ALERT_EMAILS }}
-  TF_VAR_artifact_registry_writers: ${{ vars.PROD_ARTIFACT_REGISTRY_WRITERS }}
-
-defaults:
-  run:
-    working-directory: infra/terraform/environments/production
-
-jobs:
-  plan:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.PROD_TF_PLAN_SA }}
-      - uses: hashicorp/setup-terraform@<sha-completo> # fijar por SHA
-        with:
-          terraform_version: 1.16.5
-      - run: terraform fmt -check -recursive ../..
-      - run: terraform init -input=false -backend-config="bucket=$TF_STATE_BUCKET"
-      - run: terraform validate
-      - run: terraform test
-      - run: terraform plan -input=false
-
-  apply:
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-24.04
-    environment: production # aprobación obligatoria; habilita tf-apply-production por WIF
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.PROD_TF_APPLY_SA }}
-      - uses: hashicorp/setup-terraform@<sha-completo> # fijar por SHA
-        with:
-          terraform_version: 1.16.5
-      - run: terraform init -input=false -backend-config="bucket=$TF_STATE_BUCKET"
-      - run: terraform plan -input=false -out=tfplan
-      - run: terraform apply -input=false tfplan
-```
-
-En CI no existen `gcp.auto.tfvars` ni `backend.hcl`: sus valores llegan como `TF_VAR_*` y `-backend-config`.
+El workflow [`validate-platform.yml`](../../.github/workflows/validate-platform.yml) de este repositorio solo valida Markdown, YAML, JSON, el promotor y Terraform con `init -backend=false`, `validate` y `test` con proveedores simulados. Tiene `permissions: contents: read`, no usa `id-token`, secretos ni estado remoto y no ejecuta planes. Consulta la [preparación completa de GCP](../../docs/preparacion-terraform-gcp.md).
 
 ## 8. Cómo llegan backend y frontend a producción
 
-### 8.1 El ciclo completo
-
 ```mermaid
 flowchart LR
-    DEV[Desarrollo y pruebas<br/>en local] --> PR[PR y CI<br/>del componente]
-    PR --> REL[Release del componente<br/>tag vX.Y.Z]
-    REL --> PUB[Build único + push<br/>Artifact Registry producción<br/>→ digest]
-    PUB --> MAN[Manifiesto de plataforma<br/>con los digests]
-    MAN --> PLAN[terraform plan<br/>revisado]
-    PLAN --> PROD[apply con aprobación]
+    DEV[PR y CI en GitHub<br/>sin identidad GCP] --> REL[Tag y release]
+    REL --> CB[Cloud Build en GCP<br/>build, pruebas y digest]
+    CB --> AR[Artifact Registry]
+    AR --> PROM[Promotor de plataforma]
+    PROM --> APPROVAL[Cloud Deploy<br/>aprobación humana]
+    APPROVAL --> PROD[GKE y Cloud Run]
 ```
 
-| Contenedor | Corre en | Lo despliega |
+| Contenedor | Destino | Propietario del rollout |
 | --- | --- | --- |
-| `bff-web`, `bff-mobile` | Cloud Run | Terraform (`cloud_run_images`) |
-| `web` (imagen `sportapp/web`, `release-web.yml`) | Cloud Run | Terraform (`cloud_run_images`) |
-| APIs, publicadores outbox, proyectores y Jobs de migración | GKE | Kustomize con un overlay de producción (pendiente) |
+| `bff-web`, `bff-mobile` | Cloud Run | Cloud Deploy |
+| `web` | Cloud Run | Cloud Deploy |
+| APIs, workers, proyectores y Jobs | GKE | Cloud Deploy |
 
-### 8.2 Publicar la imagen
+Propiedad de cada campo (ninguno tiene dos dueños):
 
-Cada componente se construye **una sola vez** por release y se publica en el Artifact Registry de producción. La cuenta `ci-delivery-production` solo puede publicar imágenes y la usan los jobs de backend y frontend que declaren `environment: production`.
-
-En el repositorio del componente, Environment `production`:
-
-| Variable | Valor |
-| --- | --- |
-| `GCP_WORKLOAD_IDENTITY_PROVIDER` | salida `workload_identity_provider` del bootstrap |
-| `GCP_DELIVERY_SERVICE_ACCOUNT` | salida `delivery_service_accounts.production` |
-| `GCP_ARTIFACT_REGISTRY` | salida `artifact_registry_url` (`us-central1-docker.pkg.dev/<proyecto>/sportapp`) |
-| `GCP_ARTIFACT_REGISTRY_HOST` | `us-central1-docker.pkg.dev` |
-
-El workflow `deliver-development.yml` del backend ya construye, publica y reporta el digest, pero apunta al Environment `development` y se ejecuta con cada merge. Hay que adaptarlo para que se ejecute en la release, con `environment: production`. Mientras tanto, una release puede publicarse a mano:
-
-```powershell
-gcloud auth configure-docker us-central1-docker.pkg.dev
-cd ..\backend
-$version = "0.2.0"; $sha = git rev-parse HEAD
-$registry = "us-central1-docker.pkg.dev/sportapp-prod-1234/sportapp"
-py -3.13 -m uv run python scripts/task.py build bff-web --tag "v$version" --version $version --revision $sha
-docker tag "sportapp/bff-web:v$version" "$registry/bff-web:v$version"
-docker push "$registry/bff-web:v$version"
-gcloud artifacts docker images describe "$registry/bff-web:v$version" --format="value(image_summary.fully_qualified_digest)"
-```
-
-Los tags son inmutables: no se puede volver a publicar `v0.2.0` con otro contenido.
-
-### 8.3 Desplegar en Cloud Run
-
-1. Registra los digests en `release-manifest.yaml` ([esquema de CI y release](../../docs/esquema-ci-y-release.md)) y cópialos en `environments/production/terraform.tfvars`:
-
-   ```hcl
-   cloud_run_images = {
-     bff-web    = "us-central1-docker.pkg.dev/sportapp-prod-1234/sportapp/bff-web@sha256:<digest>"
-     bff-mobile = "us-central1-docker.pkg.dev/sportapp-prod-1234/sportapp/bff-mobile@sha256:<digest>"
-   }
-   ```
-
-2. Genera el plan: debe mostrar solo el cambio de imagen (*update in-place*). Haz que otra persona lo revise y aplícalo.
-3. Cloud Run pasa el tráfico a la revisión nueva cuando `/health/ready` responde. Para revertir, restaura el digest anterior y aplica.
-4. Comprueba que `GET /version` reporte la versión del manifiesto.
-
-El frontend se despliega igual (`cloud_run_images.web`). La plataforma configura sola lo que conecta los servicios; `terraform output cloud_run_env` muestra el resultado:
-
-- `web`: `BFF_WEB_BASE_URL` (URL determinista de `bff-web`), `REGISTRATION_POLICIES_VERSION` y `HEALTH_DATA_CONSENT_VERSION`;
-- `bff-web`: `CORS_ALLOWED_ORIGINS` (URL de `web`) y la URL interna de cada API de GKE que exige (`USERS_`, `AFFILIATION_`, `TRAINING_`, `COMPLEMENTARY_SERVICES_` y `EVENTS_MANAGEMENT_BASE_URL`);
-- `bff-mobile`: las URL internas de Usuarios, Afiliación, Entrenamientos y Eventos.
-
-Las URL internas son IP fijas que reserva esta raíz (`gke_internal_apis`); el balanceador interno de cada API las toma en [8.4](#84-desplegar-en-gke). Las versiones salen de `registration_policies_version`, `health_data_consent_version` y `affiliation_expected_catalog_version`. `health_data_consent_version` no tiene valor aprobado: el plan se detiene hasta que se pase con `-var` o en `gcp.auto.tfvars`.
-
-### 8.4 Desplegar en GKE
-
-`environments/production-workloads` aplica en GKE los manifiestos `deploy/k8s/base` del backend (submódulo `components/backend` por defecto) con lo propio de producción. Tiene estado propio (prefijo `sportapp/production-workloads` en el mismo bucket) y lee del estado de `environments/production` el clúster, las identidades, la IP de Cloud SQL, las IP internas y la configuración no secreta.
-
-| Qué hace | Cómo |
-| --- | --- |
-| Despliega los 15 Deployments del backend (APIs, publicadores outbox, proyectores, consumidor del alta gratuita y `third-party-management`) | Kustomize sobre `deploy/k8s/base`; `bff-web` y `bff-mobile` se retiran porque van a Cloud Run |
-| Workload Identity | una KSA por carga y una `<servicio>-migrate` por dominio, anotadas con `gke_workload_identities`; cada Deployment y Job usa la suya |
-| Configuración | `sportapp-runtime` con `APP_ENV=production`, `DATABASE_HOST` (IP privada de Cloud SQL, TLS obligatorio), `PUBSUB_PROJECT_ID` sin emulador y las versiones del ambiente |
-| Secretos | `sportapp-database` (de `db-password-<dominio>`) y `sportapp-users-jwt` (de `users-jwt-private-key`) se copian de Secret Manager con valores efímeros: no quedan en el estado. `secrets_revision` los vuelve a copiar tras una rotación |
-| Imágenes | Artifact Registry por digest (`image_digests`); un tag se rechaza |
-| Migraciones | los 8 Jobs terminan (`kubernetes_manifest` con `wait`) antes de crear o actualizar cualquier Deployment; un digest nuevo reemplaza el Job |
-| BFF → APIs | `users-management`, `affiliation-management`, `training-management`, `complementary-services` y `events-management` se exponen con un balanceador interno en su IP reservada, solo para la subred de Cloud Run |
-| Réplicas | 2 por API (`api_replicas`); los workers conservan las del backend |
-
-Orden: primero `environments/production` (infraestructura y Cloud Run) y después `environments/production-workloads`:
-
-```powershell
-cd infra\terraform\environments\production-workloads
-Copy-Item backend.hcl.example backend.hcl            # mismo bucket de estado
-Copy-Item gcp.auto.tfvars.example gcp.auto.tfvars    # proyecto, bucket y digests
-git -C ..\..\..\.. submodule update --init components/backend
-terraform init -backend-config=backend.hcl
-terraform plan -out tfplan
-terraform apply tfplan
-```
-
-La identidad que ejecuta Terraform necesita acceso al clúster (`roles/container.developer` o superior) y `roles/secretmanager.secretAccessor` sobre los secretos de base y JWT, también para el plan. Un plan de revisión sin acceso a los secretos se hace con `-var sync_secrets=false`; nunca se aplica así un ambiente nuevo.
-
-### 8.5 Resumen por evento
-
-| Evento | Backend / frontend | Plataforma |
+| Recurso | Terraform | Cloud Deploy |
 | --- | --- | --- |
-| Cambio en una rama | CI del componente | probar en local con un tag nuevo ([5.1](#51-cambió-el-código-del-backend)) |
-| Merge a `develop` | CI completa | actualizar el clon y aplicar en local ([5.2](#52-cambiaron-los-manifiestos-del-backend)) |
-| Release del componente | tag y publicación en Artifact Registry de producción | digests en el manifiesto, en `cloud_run_images` (Cloud Run) y en `image_digests` (GKE) |
-| Promoción aprobada | — | `apply` de `production` y luego de `production-workloads`, con revisión |
-| Rollback | — | digest anterior y `apply` |
+| Servicio Cloud Run | servicio base, identidad, red, variables, secretos, escalado, sondas e IAM | imagen, revisión y tráfico (`lifecycle.ignore_changes` solo en esos campos) |
+| GKE | namespace, KSA y Workload Identity, Secrets, ConfigMap `sportapp-runtime`, Services y balanceadores internos, RBAC | Deployments, Jobs de migración, imágenes por digest, réplicas, readiness y rollback |
+| Pipelines y targets | `environments/delivery` (con `requireApproval` y los parámetros que repiten la configuración de Terraform) | releases y rollouts |
+
+Recorrido de una release:
+
+1. El tag `vX.Y.Z` de backend o frontend dispara `release-backend` o `release-frontend` (Cloud Build, cuenta del componente): pruebas, una construcción, publicación por digest y `backend-release.json`/`frontend-release.json` en su bucket.
+2. Un operador ejecuta el trigger manual `promote-release` con `_COMPONENT`, `_VERSION` (y `_BACKEND_VERSION` para el frontend). [`scripts/promote_release.py`](../../scripts/promote_release.py) valida la evidencia contra la [allowlist](../../deploy/clouddeploy/allowlist.json) y crea las releases.
+3. Cada rollout queda pendiente de aprobación. En `backend-gke`, la etapa `production-gke-migrations` aplica solo los Jobs de esa release y espera `Complete`; recién entonces puede promoverse y aprobarse `production-gke` (Deployments, rollout y smoke).
+4. Rollback: una nueva release con los digests anteriores, aprobación, readiness y smoke. Los tags nunca se mueven y las migraciones destructivas no se revierten automáticamente.
+
+Primera release, rollback y verificaciones: [Preparación de GCP para Terraform y entrega](../../docs/preparacion-terraform-gcp.md#13-primera-release).
 
 ## 9. Pruebas
 
@@ -702,7 +570,10 @@ terraform fmt -check -recursive infra\terraform
 cd infra\terraform\environments\local;      terraform init; terraform test
 cd ..\production;                           terraform init -backend=false; terraform test
 cd ..\production-workloads;                 terraform init -backend=false; terraform test
+cd ..\delivery;                             terraform init -backend=false; terraform test
+cd ..\..\bootstrap\gcp-state;               terraform init -backend=false; terraform test
 cd ..\..\modules\gcp\platform;              terraform init -backend=false; terraform test
+cd ..\cloud-run;                            terraform init -backend=false; terraform test
 cd ..\pubsub;                               terraform init -backend=false; terraform test
 cd ..\pubsub-consumer;                      terraform init -backend=false; terraform test
 cd ..\observability;                        terraform init -backend=false; terraform test
@@ -712,7 +583,11 @@ cd ..\observability;                        terraform init -backend=false; terra
 | --- | --- |
 | `environments/local/tests` | solo `docker-desktop` es aceptado, la ruta del backend debe existir, `sportapp-runtime` publica la versión de políticas y el catálogo aprobados y Afiliación toma el catálogo de allí |
 | `environments/production/tests` | el `terraform.tfvars` de producción produce un plan válido con las protecciones obligatorias, la mensajería de Usuarios, Afiliación y Entrenamientos y la versión de políticas de la web |
-| `environments/production-workloads/tests` | con Kustomize real sobre el clon del backend: los 15 Deployments en GKE sin los BFF, KSA y Workload Identity por carga y por migración, imágenes por digest, balanceadores internos en las IP reservadas, 2 réplicas por API y `sportapp-runtime` de producción; rechaza tags y un backend ausente |
+| `bootstrap/gcp-state/tests` | sin WIF; `tf-plan`/`tf-apply` solo para personas o grupos; cuatro identidades de entrega sin roles administrativos ni aprobación; quién puede adjuntarlas |
+| `environments/production-workloads/tests` | con Kustomize real sobre el clon del backend: solo Services (nunca Deployments, Jobs ni digests), balanceadores internos en las IP reservadas, `sportapp-runtime` de producción, KSA y RBAC de Cloud Deploy sin borrar ni leer secretos |
+| `environments/delivery/tests` | evidencia privada y separada, triggers por tag SemVer con su cuenta y sus sustituciones, promotor manual, todos los targets con aprobación, migraciones antes que Deployments, aprobadores humanos y parámetros de Cloud Run iguales a la plantilla |
+| `modules/gcp/cloud-run/tests` | Terraform crea la primera revisión, no restaura un digest promovido después y sigue aplicando cambios de configuración |
+| `tests/` (Python) | promotor (`latest`, tags, imágenes externas, allowlist, contratos, objetos Kubernetes), JSON Schema y políticas del repositorio: `py -3.13 -m unittest discover -s tests -v` |
 | `modules/gcp/platform/tests` | aislamiento de secretos por dominio, tópicos solo en dominios CQRS, nombres de Pub/Sub por dominio, tópico y alta gratuita de Afiliación con IAM mínimo, rechazo de imágenes por tag y de secretos no declarados, reglas de producción |
 | `modules/gcp/pubsub/tests` | nombres de contrato, orden, entregas por dominio (5 en Usuarios, 10 por defecto), espera de 10 a 600 s, DLQ e IAM mínimo de publicador y proyector |
 | `modules/gcp/pubsub-consumer/tests` | alta gratuita: filtro `usuario.registrado.v1`, orden, 10 entregas, espera de 10 a 600 s, DLQ e IAM mínimo del consumidor |
@@ -734,6 +609,8 @@ cd ..\observability;                        terraform init -backend=false; terra
 | `apply` de un ambiente creado antes de las dos fases falla al mover Deployments | el estado guarda las cargas con la dirección anterior (`p1`) | `terraform destroy` y `apply`, o mover cada carga con `terraform state mv` a `kustomization_resource.p1_workloads` |
 | Error de autenticación en PostgreSQL después de cambiar `password_revision` | el rol conserva la contraseña de la primera inicialización | `terraform destroy` y `apply` |
 | `403 … getAccessToken` (producción) | tu usuario no está en `operators` | agrégalo y aplica el bootstrap |
+| El plan de `delivery` falla con «Los parámetros del target no coinciden» | cambió una variable de Cloud Run sin actualizar `deploy/clouddeploy/cloudrun/<servicio>/service.yaml` | agrega la variable a la plantilla con su `from-param` |
+| El promotor rechaza la release | evidencia incompleta, imagen fuera de la allowlist o un objeto nuevo en `deploy/k8s/base` | revisa el log del build `promote-release`; un objeto nuevo exige actualizar la allowlist mediante PR |
 | `Error acquiring the state lock` (producción) | otro `apply` está en curso | espera; usa `terraform force-unlock` solo si nadie más está aplicando |
 
 ## 11. Supuestos y pendientes
@@ -748,7 +625,8 @@ cd ..\observability;                        terraform init -backend=false; terra
 
 Pendientes:
 
-- overlay Kubernetes de producción ([8.4](#84-desplegar-en-gke));
-- workflows de Terraform y adaptación de `deliver-development.yml` del backend a releases ([8.2](#82-publicar-la-imagen));
+- aplicar en GCP, desde la estación del operador, bootstrap, production, production-workloads y delivery, y autorizar la GitHub App (no se ha ejecutado nada en GCP);
+- `health_data_consent_version` de producción y la imagen de herramientas `deploy_tools_image` (gcloud, kubectl y gke-gcloud-auth-plugin) por digest;
+- habilitar Binary Authorization cuando existan attestations del proceso de build;
 - retirar del backend el overlay `deploy/k8s/overlays/local`, reemplazado por esta raíz, para que no haya dos fuentes del ambiente local;
 - permisos PostgreSQL por base en producción: los usuarios de Cloud SQL pertenecen a `cloudsqlsuperuser`.

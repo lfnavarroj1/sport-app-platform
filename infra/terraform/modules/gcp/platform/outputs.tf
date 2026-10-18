@@ -1,6 +1,6 @@
-output "artifact_registry_url" {
-  description = "Prefijo para publicar y referenciar imágenes."
-  value       = module.artifact_registry.repository_url
+output "artifact_registry_urls" {
+  description = "Prefijo de imágenes por repositorio: backend (APIs, workers y BFF) y frontend (web)."
+  value       = { for key, m in module.artifact_registry : key => m.repository_url }
 }
 
 output "gke" {
@@ -10,6 +10,39 @@ output "gke" {
     location     = module.gke.location
     dns_endpoint = module.gke.dns_endpoint
     namespace    = var.gke_namespace
+    cluster_id   = "projects/${var.project_id}/locations/${module.gke.location}/clusters/${module.gke.name}"
+  }
+}
+
+output "delivery_identities" {
+  description = "Identidades de entrega autorizadas en este ambiente (las lee environments/production-workloads para RBAC)."
+  value       = var.delivery_identities
+}
+
+# Lo que environments/delivery necesita para declarar los targets de Cloud Run:
+# la misma configuración que administra Terraform, como parámetros del target,
+# para que un rollout solo cambie la imagen.
+output "cloud_run_deploy_config" {
+  description = "Por servicio de Cloud Run creado: ubicación, identidad, escalado, red y variables efectivas."
+  value = {
+    for name, m in module.cloud_run : name => {
+      name            = m.name
+      location        = "projects/${var.project_id}/locations/${var.region}"
+      repository      = local.cloud_run_repository[name]
+      service_account = module.iam.emails[name]
+      port            = local.cloud_run_services[name].port
+      cpu             = var.cloud_run.cpu
+      memory          = var.cloud_run.memory
+      min_instances   = var.suspended ? 0 : var.cloud_run.min_instances
+      max_instances   = var.cloud_run.max_instances
+      concurrency     = var.cloud_run.concurrency
+      timeout_seconds = var.cloud_run.timeout_seconds
+      vpc_network     = local.cloud_run_services[name].vpc ? element(split("/", module.network.network_id), length(split("/", module.network.network_id)) - 1) : null
+      vpc_subnetwork  = local.cloud_run_services[name].vpc ? element(split("/", module.network.serverless_subnetwork_id), length(split("/", module.network.serverless_subnetwork_id)) - 1) : null
+      env             = local.cloud_run_env_effective[name]
+      secret_env      = lookup(var.cloud_run_secret_env, name, {})
+      uri             = m.uri
+    }
   }
 }
 
@@ -80,7 +113,7 @@ output "runtime_config" {
 
 output "cloud_run_env" {
   description = "Variables de entorno no secretas de cada servicio de Cloud Run (las de la plataforma más cloud_run_env)."
-  value       = { for name, s in local.cloud_run_services : name => merge({ APP_ENV = var.environment }, local.cloud_run_platform_env[name], lookup(var.cloud_run_env, name, {})) }
+  value       = local.cloud_run_env_effective
 }
 
 output "cloud_run_urls" {

@@ -1,0 +1,57 @@
+# Servicio Cloud Run bff-mobile para Cloud Deploy (target production-bff-mobile).
+# Los valores marcados con from-param los fija Terraform como parámetros del
+# target (environments/delivery, a partir de environments/production): son los
+# mismos que administra Terraform, así que un rollout solo cambia la imagen.
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: bff-mobile
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "1" # from-param: ${min_instances}
+        autoscaling.knative.dev/maxScale: "10" # from-param: ${max_instances}
+        run.googleapis.com/cpu-throttling: "true"
+        run.googleapis.com/startup-cpu-boost: "true"
+        run.googleapis.com/vpc-access-egress: private-ranges-only
+        run.googleapis.com/network-interfaces: "[]" # from-param: ${network_interfaces}
+    spec:
+      serviceAccountName: run-bff-mobile # from-param: ${service_account}
+      containerConcurrency: 80 # from-param: ${concurrency}
+      timeoutSeconds: 30 # from-param: ${timeout_seconds}
+      containers:
+        - image: sportapp/bff-mobile
+          ports:
+            - containerPort: 8000
+          resources:
+            limits:
+              cpu: "1" # from-param: ${cpu}
+              memory: 512Mi # from-param: ${memory}
+          env:
+            - name: APP_ENV
+              value: production # from-param: ${env_APP_ENV}
+            - name: USERS_MANAGEMENT_BASE_URL
+              value: http://users-management # from-param: ${env_USERS_MANAGEMENT_BASE_URL}
+            - name: AFFILIATION_MANAGEMENT_BASE_URL
+              value: http://affiliation-management # from-param: ${env_AFFILIATION_MANAGEMENT_BASE_URL}
+            - name: TRAINING_MANAGEMENT_BASE_URL
+              value: http://training-management # from-param: ${env_TRAINING_MANAGEMENT_BASE_URL}
+            - name: EVENTS_MANAGEMENT_BASE_URL
+              value: http://events-management # from-param: ${env_EVENTS_MANAGEMENT_BASE_URL}
+            - name: LOG_LEVEL
+              value: INFO # from-param: ${env_LOG_LEVEL}
+          startupProbe:
+            httpGet:
+              path: /health/ready
+              port: 8000
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8000
+            periodSeconds: 20
+            failureThreshold: 3

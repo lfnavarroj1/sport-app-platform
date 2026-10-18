@@ -1,5 +1,5 @@
 # Copiar como bootstrap.auto.tfvars (ignorado por Git). Sin llaves ni contraseñas:
-# el bootstrap lo ejecuta una persona administradora con
+# el bootstrap lo ejecuta una persona administradora desde su estación con
 #   gcloud auth application-default login
 #
 # Requisitos previos (manuales, una vez):
@@ -8,23 +8,33 @@
 # - la persona que ejecuta tiene roles/owner en ambos y
 #   roles/billing.costsManager (o admin) en la cuenta de facturación si se
 #   crean presupuestos.
+#
+# GitHub no aparece aquí: ningún repositorio obtiene identidad GCP.
 
-# Proyecto de gestión: estado, WIF y cuentas de despliegue. Nunca se destruye.
+# Proyecto de gestión: estado, cuentas de Terraform, Cloud Build y Cloud Deploy.
 management_project_id = "sportapp-mgmt-000000"
 
-region            = "us-central1"
-github_repository = "lfnavarroj1/sport-app-platform"
+region = "us-central1"
 
 # Desarrollo no aparece aquí: se ejecuta en local (environments/local).
 environments = {
   production = {
-    project_id           = "sportapp-prod-000000"
+    project_id = "sportapp-prod-000000"
+    # Solo personas o grupos; son las únicas que pueden impersonar tf-plan/tf-apply.
     operators            = ["user:operador@example.com"]
-    budget_amount        = 1000                 # tope inicial de la estimación de costos (wiki 06-8)
-    budget_alert_amounts = [50, 100, 250, 500]  # avisos en USD, además del 100 % y del pronóstico
-    component_delivery   = true                 # las releases de backend/frontend publican sus imágenes aquí
+    budget_amount        = 1000                # tope inicial de la estimación de costos (wiki 06-8)
+    budget_alert_amounts = [50, 100, 250, 500] # avisos en USD, además del 100 % y del pronóstico
+    delivery             = true                # cloud-build-*, release-promoter y cloud-deploy-execution
   }
 }
+
+# Nombres de las identidades de entrega (opcional; estos son los predeterminados).
+# delivery_account_ids = {
+#   build_backend    = "cloud-build-backend"
+#   build_frontend   = "cloud-build-frontend"
+#   release_promoter = "release-promoter"
+#   deploy_execution = "cloud-deploy-execution"
+# }
 
 # Cuenta de facturación para presupuestos; null los omite.
 # gcloud billing accounts list

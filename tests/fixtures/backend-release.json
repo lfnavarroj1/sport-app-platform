@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "kind": "backend-release",
+  "repository": "https://github.com/lfnavarroj1/sport-app-backend",
+  "version": "1.2.0",
+  "tag": "v1.2.0",
+  "commit": "0123456789abcdef0123456789abcdef01234567",
+  "contractVersion": "0.13.0",
+  "contracts": {
+    "bff-web": "0.13.0",
+    "bff-mobile": "0.8.0",
+    "users-management": "0.6.0"
+  },
+  "builtAt": "2026-10-18T12:00:00Z",
+  "build": { "system": "cloud-build", "id": "b6f2a3c4-1111-4222-8333-944455556666" },
+  "images": {
+    "users-management": "us-central1-docker.pkg.dev/sportapp-prod-test/sportapp-backend/users-management@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "affiliation-management": "us-central1-docker.pkg.dev/sportapp-prod-test/sportapp-backend/affiliation-management@sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "complementary-services": "us-central1-docker.pkg.dev/sportapp-prod-test/sportapp-backend/complementary-services@sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "training-management": "us-central1-docker.pkg.dev/sportapp-prod-test/sportapp-backend/training-management@sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    "events-management": "us-central1-docker.pkg.dev/sportapp-prod-test/sportapp-backend/events-management@sha256:5555555555555555555555555555555555555555555555555555555555555555",
+    "third-party-management": "us-central1-docker.pkg.dev/sportapp-prod-test/sportapp-backend/third-party-management@sha256:6666666666666666666666666666666666666666666666666666666666666666",
+    "bff-web": "us-central1-docker.pkg.dev/sportapp-prod-test/sportapp-backend/bff-web@sha256:7777777777777777777777777777777777777777777777777777777777777777",
+    "bff-mobile": "us-central1-docker.pkg.dev/sportapp-prod-test/sportapp-backend/bff-mobile@sha256:8888888888888888888888888888888888888888888888888888888888888888"
+  },
+  "testResults": {
+    "status": "passed",
+    "suites": {
+      "unit": { "status": "passed", "tests": 700, "skipped": 0 },
+      "integration": { "status": "passed", "tests": 200, "skipped": 0 },
+      "contract": { "status": "passed", "tests": 60, "skipped": 0 },
+      "component": { "status": "passed", "tests": 90, "skipped": 0 }
+    },
+    "coverage": { "line": 96.1, "branch": 91.0, "threshold": 90 }
+  }
+}

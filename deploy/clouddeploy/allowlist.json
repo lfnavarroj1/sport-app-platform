@@ -1,0 +1,91 @@
+{
+  "$comment": "Allowlist de entrega: única fuente de qué imágenes acepta el promotor, en qué pipeline, desde qué repositorio y qué objetos Kubernetes del backend pueden llegar a GKE. La leen scripts/promote_release.py, environments/delivery y las pruebas.",
+  "schemaVersion": 1,
+  "components": {
+    "backend": {
+      "repository": "lfnavarroj1/sport-app-backend",
+      "evidencePath": "sport-app-backend/{tag}/backend-release.json",
+      "artifactRepository": "backend",
+      "pipelines": {
+        "backend-gke": {
+          "source": "gke",
+          "images": [
+            "users-management",
+            "affiliation-management",
+            "complementary-services",
+            "training-management",
+            "events-management",
+            "third-party-management"
+          ]
+        },
+        "bff-web": {
+          "source": "cloudrun/bff-web",
+          "images": ["bff-web"]
+        },
+        "bff-mobile": {
+          "source": "cloudrun/bff-mobile",
+          "images": ["bff-mobile"]
+        }
+      },
+      "kubernetes": {
+        "deployments": [
+          "users-management",
+          "users-management-outbox-publisher",
+          "users-management-read-projector",
+          "affiliation-management",
+          "affiliation-management-free-plan-consumer",
+          "affiliation-management-outbox-publisher",
+          "complementary-services",
+          "complementary-services-outbox-publisher",
+          "training-management",
+          "training-management-outbox-publisher",
+          "training-management-read-projector",
+          "events-management",
+          "events-management-outbox-publisher",
+          "events-management-read-projector",
+          "third-party-management"
+        ],
+        "cloudRunDeployments": ["bff-web", "bff-mobile"],
+        "jobs": [
+          "users-management-migrate-write",
+          "users-management-migrate-read",
+          "users-management-directory-backfill",
+          "affiliation-management-migrate-main",
+          "complementary-services-migrate-main",
+          "training-management-migrate-write",
+          "training-management-migrate-read",
+          "events-management-migrate-write",
+          "events-management-migrate-read"
+        ],
+        "services": [
+          "users-management",
+          "affiliation-management",
+          "complementary-services",
+          "training-management",
+          "events-management",
+          "third-party-management",
+          "bff-web",
+          "bff-mobile"
+        ],
+        "smokeServices": [
+          "users-management",
+          "affiliation-management",
+          "training-management",
+          "complementary-services",
+          "events-management"
+        ]
+      }
+    },
+    "frontend": {
+      "repository": "lfnavarroj1/sport-app-frontend",
+      "evidencePath": "frontend/{tag}/frontend-release.json",
+      "artifactRepository": "frontend",
+      "pipelines": {
+        "frontend-web": {
+          "source": "cloudrun/web",
+          "images": ["web"]
+        }
+      }
+    }
+  }
+}

@@ -1,8 +1,14 @@
 # Fundación que debe existir antes de las raíces de environments/:
 # - un bucket de estado versionado por ambiente en el proyecto de gestión;
-# - Workload Identity Federation para GitHub Actions (sin llaves JSON);
-# - por ambiente, una cuenta tf-plan (lectura) y una tf-apply (cambios);
+# - por ambiente, una cuenta tf-plan (lectura) y una tf-apply (cambios) que
+#   solo pueden impersonar los operadores humanos declarados;
+# - para el ambiente con entrega, las identidades internas de GCP que
+#   construyen (Cloud Build), promueven y despliegan (Cloud Deploy);
 # - presupuestos con alertas por proyecto (no limitan el gasto por sí solos).
+#
+# GitHub no recibe identidad GCP: no hay Workload Identity Federation, ningún
+# repositorio es principal de una cuenta y Terraform solo se ejecuta desde la
+# estación del operador (ADC + impersonación de tf-apply-<ambiente>).
 
 locals {
   # Mínimo para que Terraform del ambiente habilite el resto de APIs.
@@ -14,10 +20,10 @@ locals {
   ]
 
   # Permisos de la raíz del ambiente. projectIamAdmin es inevitable para
-  # otorgar roles a las cargas; por eso tf-apply solo se usa desde un GitHub
-  # Environment protegido o por operadores explícitos.
+  # otorgar roles a las cargas; por eso tf-apply solo la impersonan operadores.
   apply_roles = [
     "roles/artifactregistry.admin",
+    "roles/binaryauthorization.policyEditor",
     "roles/cloudsql.admin",
     "roles/compute.networkAdmin",
     "roles/compute.securityAdmin",
@@ -32,6 +38,24 @@ locals {
     "roles/servicenetworking.networksAdmin",
     "roles/serviceusage.serviceUsageAdmin",
   ]
+
+  # Lo que environments/delivery administra en el proyecto de gestión. Los
+  # buckets se limitan por nombre con una condición IAM.
+  delivery_apply_roles = [
+    "roles/cloudbuild.builds.editor",
+    "roles/cloudbuild.connectionAdmin",
+    "roles/clouddeploy.admin",
+  ]
+
+  # Roles de proyecto (gestión) de cada identidad de entrega. Los permisos
+  # sobre recursos concretos (repositorios, buckets, pipelines, servicios) los
+  # conceden las raíces dueñas de esos recursos.
+  delivery_project_roles = {
+    build_backend    = ["roles/logging.logWriter"]
+    build_frontend   = ["roles/logging.logWriter"]
+    release_promoter = ["roles/logging.logWriter"]
+    deploy_execution = ["roles/logging.logWriter", "roles/clouddeploy.jobRunner"]
+  }
 
   environment_services = merge([
     for env, cfg in var.environments : {
@@ -51,31 +75,42 @@ locals {
     }
   ]...)
 
-  operator_bindings = merge([
-    for env, cfg in var.environments : {
-      for member in cfg.operators : "${env}/${member}" => { env = env, member = member }
-    }
+  # Como mucho un ambiente tiene entrega (validado en variables.tf).
+  delivery_env = one([for env, cfg in var.environments : env if cfg.delivery])
+
+  delivery_identities = local.delivery_env == null ? {} : var.delivery_account_ids
+
+  delivery_project_bindings = merge([
+    for key, roles in local.delivery_project_roles : {
+      for role in roles : "${key}/${role}" => { key = key, role = role }
+    } if contains(keys(local.delivery_identities), key)
   ]...)
 
-  delivery_environments = { for env, cfg in var.environments : env => cfg if cfg.component_delivery }
+  cloudbuild_agent  = "serviceAccount:service-${data.google_project.management.number}@gcp-sa-cloudbuild.iam.gserviceaccount.com"
+  clouddeploy_agent = "serviceAccount:service-${data.google_project.management.number}@gcp-sa-clouddeploy.iam.gserviceaccount.com"
+}
 
-  delivery_bindings = merge([
-    for env in keys(local.delivery_environments) : {
-      for repo in var.component_repositories : "${env}/${repo}" => { env = env, repo = repo }
-    }
-  ]...)
+data "google_project" "management" {
+  project_id = var.management_project_id
 }
 
 resource "google_project_service" "management" {
-  for_each = toset([
-    "billingbudgets.googleapis.com",
-    "cloudresourcemanager.googleapis.com",
-    "iam.googleapis.com",
-    "iamcredentials.googleapis.com",
-    "serviceusage.googleapis.com",
-    "storage.googleapis.com",
-    "sts.googleapis.com",
-  ])
+  for_each = toset(concat(
+    [
+      "billingbudgets.googleapis.com",
+      "cloudresourcemanager.googleapis.com",
+      "iam.googleapis.com",
+      "iamcredentials.googleapis.com",
+      "serviceusage.googleapis.com",
+      "storage.googleapis.com",
+    ],
+    local.delivery_env == null ? [] : [
+      "cloudbuild.googleapis.com",
+      "clouddeploy.googleapis.com",
+      "logging.googleapis.com",
+      "secretmanager.googleapis.com",
+    ],
+  ))
 
   project            = var.management_project_id
   service            = each.value
@@ -135,39 +170,6 @@ resource "google_storage_bucket" "state" {
   depends_on = [google_project_service.management]
 }
 
-# --- Identidad de GitHub Actions --------------------------------------------
-
-resource "google_iam_workload_identity_pool" "github" {
-  project                   = var.management_project_id
-  workload_identity_pool_id = "github"
-  display_name              = "GitHub Actions"
-  description               = "OIDC de GitHub Actions para Terraform de SportApp"
-
-  depends_on = [google_project_service.management]
-}
-
-resource "google_iam_workload_identity_pool_provider" "github" {
-  project                            = var.management_project_id
-  workload_identity_pool_id          = google_iam_workload_identity_pool.github.workload_identity_pool_id
-  workload_identity_pool_provider_id = "sport-app-platform"
-  display_name                       = "sport-app-platform"
-
-  attribute_mapping = {
-    "google.subject"             = "assertion.sub"
-    "attribute.repository"       = "assertion.repository"
-    "attribute.repository_owner" = "assertion.repository_owner"
-    "attribute.ref"              = "assertion.ref"
-  }
-
-  # Solo la plataforma y los componentes declarados pueden intercambiar tokens;
-  # cada cuenta restringe además qué repositorio y ambiente la usa.
-  attribute_condition = "assertion.repository in ${jsonencode(concat([var.github_repository], var.component_repositories))}"
-
-  oidc {
-    issuer_uri = "https://token.actions.githubusercontent.com"
-  }
-}
-
 # --- Cuentas de Terraform por ambiente --------------------------------------
 
 resource "google_service_account" "plan" {
@@ -175,7 +177,8 @@ resource "google_service_account" "plan" {
 
   project      = var.management_project_id
   account_id   = "tf-plan-${each.key}"
-  display_name = "Terraform plan ${each.key}"
+  display_name = "Terraform plan ${each.key} (solo operadores)"
+  description  = "Planes manuales de lectura desde la estación del operador."
 }
 
 resource "google_service_account" "apply" {
@@ -183,7 +186,8 @@ resource "google_service_account" "apply" {
 
   project      = var.management_project_id
   account_id   = "tf-apply-${each.key}"
-  display_name = "Terraform apply ${each.key}"
+  display_name = "Terraform apply ${each.key} (solo operadores)"
+  description  = "Aplicación manual de infraestructura desde la estación del operador."
 }
 
 resource "google_project_iam_member" "plan" {
@@ -219,59 +223,116 @@ resource "google_storage_bucket_iam_member" "apply" {
   member = google_service_account.apply[each.key].member
 }
 
-# Cualquier job del repositorio (incluidos PR) puede generar un plan.
-resource "google_service_account_iam_member" "plan_github" {
+# Políticas autoritativas: solo los operadores humanos pueden obtener tokens de
+# tf-plan y tf-apply. Cualquier otro binding a nivel de cuenta (Cloud Build,
+# Cloud Deploy, GitHub o una cuenta de carga) se elimina en el siguiente apply.
+# Sin roles/iam.serviceAccountUser: nadie adjunta estas cuentas a un recurso.
+data "google_iam_policy" "terraform" {
+  for_each = var.environments
+
+  binding {
+    role    = "roles/iam.serviceAccountTokenCreator"
+    members = each.value.operators
+  }
+}
+
+resource "google_service_account_iam_policy" "plan" {
   for_each = var.environments
 
   service_account_id = google_service_account.plan[each.key].name
-  role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${var.github_repository}"
+  policy_data        = data.google_iam_policy.terraform[each.key].policy_data
 }
 
-# Solo un job que declare `environment: <ambiente>` (con sus reglas de
-# aprobación en GitHub) puede aplicar.
-resource "google_service_account_iam_member" "apply_github" {
+resource "google_service_account_iam_policy" "apply" {
   for_each = var.environments
 
   service_account_id = google_service_account.apply[each.key].name
-  role               = "roles/iam.workloadIdentityUser"
-  member             = "principal://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/subject/repo:${var.github_repository}:environment:${each.key}"
+  policy_data        = data.google_iam_policy.terraform[each.key].policy_data
 }
 
-# Publicación de imágenes desde backend y frontend. La cuenta no tiene roles
-# en el proyecto: la raíz del ambiente le concede escritura solo en su
-# Artifact Registry mediante artifact_registry_writers.
+# --- Identidades de entrega (proyecto de gestión) ---------------------------
+#
+# cloud-build-backend / cloud-build-frontend: construyen y publican cada uno
+#   solo en su repositorio de Artifact Registry y su bucket de evidencia.
+# release-promoter: lee la evidencia y crea releases en pipelines existentes.
+# cloud-deploy-execution: ejecuta los rollouts sobre los targets registrados.
+# Ninguna tiene roles administrativos, impersona tf-apply ni aprueba rollouts.
+
 resource "google_service_account" "delivery" {
-  for_each = local.delivery_environments
+  for_each = local.delivery_identities
 
   project      = var.management_project_id
-  account_id   = "ci-delivery-${each.key}"
-  display_name = "Publicación de imágenes ${each.key}"
+  account_id   = each.value
+  display_name = "SportApp ${local.delivery_env}: ${each.key}"
 }
 
-resource "google_service_account_iam_member" "delivery_github" {
-  for_each = local.delivery_bindings
+resource "google_project_iam_member" "delivery" {
+  for_each = local.delivery_project_bindings
 
-  service_account_id = google_service_account.delivery[each.value.env].name
-  role               = "roles/iam.workloadIdentityUser"
-  member             = "principal://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/subject/repo:${each.value.repo}:environment:${each.value.env}"
+  project = var.management_project_id
+  role    = each.value.role
+  member  = google_service_account.delivery[each.value.key].member
 }
 
-# Personas que operan Terraform desde su equipo por impersonación.
-resource "google_service_account_iam_member" "operators_plan" {
-  for_each = local.operator_bindings
+# Quién puede usar cada identidad de entrega (políticas autoritativas):
+# - tf-apply la adjunta a triggers y targets (actAs), sin obtener tokens;
+# - release-promoter adjunta cloud-deploy-execution al crear una release;
+# - los agentes de servicio de Cloud Build y Cloud Deploy obtienen sus tokens.
+data "google_iam_policy" "delivery" {
+  for_each = local.delivery_identities
 
-  service_account_id = google_service_account.plan[each.value.env].name
-  role               = "roles/iam.serviceAccountTokenCreator"
-  member             = each.value.member
+  binding {
+    role = "roles/iam.serviceAccountUser"
+    members = concat(
+      [google_service_account.apply[local.delivery_env].member],
+      each.key == "deploy_execution" ? [google_service_account.delivery["release_promoter"].member] : [],
+    )
+  }
+
+  binding {
+    role    = "roles/iam.serviceAccountTokenCreator"
+    members = [each.key == "deploy_execution" ? local.clouddeploy_agent : local.cloudbuild_agent]
+  }
 }
 
-resource "google_service_account_iam_member" "operators_apply" {
-  for_each = local.operator_bindings
+resource "google_service_account_iam_policy" "delivery" {
+  for_each = local.delivery_identities
 
-  service_account_id = google_service_account.apply[each.value.env].name
-  role               = "roles/iam.serviceAccountTokenCreator"
-  member             = each.value.member
+  service_account_id = google_service_account.delivery[each.key].name
+  policy_data        = data.google_iam_policy.delivery[each.key].policy_data
+}
+
+# tf-apply administra en gestión los recursos de environments/delivery.
+resource "google_project_iam_member" "delivery_apply" {
+  for_each = local.delivery_env == null ? toset([]) : toset(local.delivery_apply_roles)
+
+  project = var.management_project_id
+  role    = each.value
+  member  = google_service_account.apply[local.delivery_env].member
+}
+
+# Solo los buckets de entrega (prefijo fijo), nunca los de estado.
+resource "google_project_iam_member" "delivery_apply_buckets" {
+  count = local.delivery_env == null ? 0 : 1
+
+  project = var.management_project_id
+  role    = "roles/storage.admin"
+  member  = google_service_account.apply[local.delivery_env].member
+
+  condition {
+    title       = "solo-buckets-de-entrega"
+    description = "Buckets de evidencia y de Cloud Deploy creados por environments/delivery."
+    expression  = "resource.name.startsWith(\"projects/_/buckets/${var.management_project_id}-delivery-\")"
+  }
+}
+
+# environments/delivery lee del estado de producción los recursos destino.
+resource "google_storage_bucket_iam_member" "delivery_reads_state" {
+  count = local.delivery_env == null ? 0 : 1
+
+  bucket = google_storage_bucket.state[local.delivery_env].name
+  role   = "roles/storage.objectUser"
+  member = google_service_account.apply[local.delivery_env].member
 }
 
 # --- Presupuestos -------------------------------------------------------------

@@ -4,20 +4,32 @@
 #   cp   gcp.auto.tfvars.example gcp.auto.tfvars    (bash)
 #
 # gcp.auto.tfvars está ignorado por Git y Terraform lo carga solo.
-# Este archivo NO lleva llaves ni contraseñas: Terraform se autentica con
-# Application Default Credentials e impersona la cuenta creada por el bootstrap.
-#   gcloud auth login
+# Este archivo NO lleva llaves ni contraseñas: Terraform se ejecuta solo desde la
+# estación del operador, con Application Default Credentials e impersonación
+# de la cuenta creada por el bootstrap.
 #   gcloud auth application-default login
-# En CI se omiten estos valores y se pasan como TF_VAR_* desde el GitHub
-# Environment "production".
+# Ninguna automatización (GitHub, Cloud Build ni Cloud Deploy) ejecuta esta raíz.
 
-# Proyecto exclusivo de desarrollo, con facturación habilitada.
+# Proyecto de producción, con facturación habilitada.
 project_id = "sportapp-prod-000000"
 
-# Salida "apply_service_accounts.production" del bootstrap.
-# Su cuenta de usuario necesita roles/iam.serviceAccountTokenCreator sobre ella
-# (el bootstrap la concede a los operators). Dejar en null cuando se use WIF.
+# Salida "apply_service_accounts.production" del bootstrap (o
+# "plan_service_accounts.production" para un plan de revisión). Su usuario
+# necesita roles/iam.serviceAccountTokenCreator sobre ella: el bootstrap solo la
+# concede a los operators.
 impersonate_service_account = "tf-apply-production@sportapp-mgmt-000000.iam.gserviceaccount.com"
+
+# Salida "delivery_identities" del bootstrap: cada cuenta de Cloud Build escribe
+# solo en su repositorio de Artifact Registry; promoción y ejecución solo leen.
+delivery_identities = {
+  build_backend    = "cloud-build-backend@sportapp-mgmt-000000.iam.gserviceaccount.com"
+  build_frontend   = "cloud-build-frontend@sportapp-mgmt-000000.iam.gserviceaccount.com"
+  release_promoter = "release-promoter@sportapp-mgmt-000000.iam.gserviceaccount.com"
+  deploy_execution = "cloud-deploy-execution@sportapp-mgmt-000000.iam.gserviceaccount.com"
+}
+
+# Sin valor aprobado todavía (ADR-034): el plan se detiene hasta definirla.
+# health_data_consent_version = "<versión aprobada>"
 
 # Destinatarios de alertas de Cloud Monitoring.
 alert_emails = ["equipo-sportapp@example.com"]
@@ -28,11 +40,17 @@ gke_authorized_networks = [
   # { cidr_block = "203.0.113.10/32", display_name = "operador" },
 ]
 
-# Cuenta con la que los workflows de release de backend/frontend publican
-# imágenes (salida "delivery_service_accounts.production" del bootstrap).
-artifact_registry_writers = {
-  component-ci = "serviceAccount:ci-delivery-production@sportapp-mgmt-000000.iam.gserviceaccount.com"
-}
+# Primera release (docs/preparacion-terraform-gcp.md, sección 13): digests
+# publicados por Cloud Build. Solo crean la primera revisión; después la imagen
+# la administra Cloud Deploy y Terraform no la reconcilia.
+# cloud_run_images = {
+#   web        = "us-central1-docker.pkg.dev/sportapp-prod-000000/sportapp-frontend/web@sha256:<64 hex>"
+#   bff-web    = "us-central1-docker.pkg.dev/sportapp-prod-000000/sportapp-backend/bff-web@sha256:<64 hex>"
+#   bff-mobile = "us-central1-docker.pkg.dev/sportapp-prod-000000/sportapp-backend/bff-mobile@sha256:<64 hex>"
+# }
+
+# Binary Authorization: deshabilitada hasta que existan attestations válidas.
+# binary_authorization = { enabled = true, attestors = ["projects/sportapp-prod-000000/attestors/cloud-build"] }
 
 labels = {
   owner = "equipo-sportapp"

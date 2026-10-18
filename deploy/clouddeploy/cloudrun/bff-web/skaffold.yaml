@@ -1,0 +1,23 @@
+# Release de bff-web en Cloud Run (pipeline bff-web). Propiedad de
+# sport-app-platform: la verificación no proviene de la release del componente.
+# Los valores @@...@@ los completa scripts/promote_release.py.
+apiVersion: skaffold/v4beta7
+kind: Config
+metadata:
+  name: bff-web
+manifests:
+  rawYaml:
+    - service.yaml
+deploy:
+  cloudrun: {}
+verify:
+  - name: smoke-bff-web
+    container:
+      name: smoke-bff-web
+      image: "@@RUN_VERIFY_IMAGE@@"
+      command: ["/bin/bash", "-ceu"]
+      args:
+        - |
+          url="$(gcloud run services describe bff-web --region "@@RUN_REGION@@"             --project "@@RUN_PROJECT@@" --format='value(status.url)')"
+          curl -fsS --retry 5 --retry-delay 5 --max-time 10 "$url/health/ready" >/dev/null
+          echo "bff-web: /health/ready responde"

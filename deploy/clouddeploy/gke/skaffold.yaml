@@ -1,0 +1,84 @@
+# Release backend en GKE (pipeline backend-gke). Propiedad de sport-app-platform:
+# ningún hook ni comando proviene de la release del componente.
+#
+# Etapa 1, perfil migrations (target production-gke-migrations): aplica solo los
+# Jobs de migración de esta release y la verificación espera a que todos
+# terminen en Complete; un Job fallido hace fallar el rollout.
+# Etapa 2, perfil workloads (target production-gke): solo puede promoverse
+# cuando la etapa 1 terminó bien; aplica los Deployments, Cloud Deploy espera el
+# rollout y la verificación consulta el readiness de cada API.
+#
+# Los valores @@...@@ los completa scripts/promote_release.py al crear la
+# release (clúster, namespace, imagen de herramientas por digest y Jobs
+# esperados); la release se crea solo si todos quedan resueltos.
+apiVersion: skaffold/v4beta7
+kind: Config
+metadata:
+  name: backend-gke
+profiles:
+  - name: migrations
+    manifests:
+      kustomize:
+        paths:
+          - migrations
+    deploy:
+      kubectl: {}
+    verify:
+      - name: migraciones-completas
+        container:
+          name: migraciones-completas
+          image: "@@DEPLOY_TOOLS_IMAGE@@"
+          command: ["/bin/bash", "-ceu"]
+          args:
+            - |
+              gcloud container clusters get-credentials "@@GKE_CLUSTER@@" \
+                --location "@@GKE_LOCATION@@" --project "@@GKE_PROJECT@@" --dns-endpoint
+              ns="@@NAMESPACE@@"
+              selector="sportapp.io/release=@@RELEASE_LABEL@@"
+              expected="@@EXPECTED_JOBS@@"
+              jobs="$(kubectl -n "$ns" get jobs -l "$selector" -o name)"
+              count="$(printf '%s\n' "$jobs" | grep -c . || true)"
+              if [ "$count" != "$expected" ]; then
+                echo "se esperaban $expected Jobs de migración y hay $count" >&2
+                exit 1
+              fi
+              deadline=$(( $(date +%s) + 900 ))
+              for job in $jobs; do
+                while :; do
+                  complete="$(kubectl -n "$ns" get "$job" -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}')"
+                  failed="$(kubectl -n "$ns" get "$job" -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}')"
+                  if [ "$complete" = "True" ]; then echo "$job: Complete"; break; fi
+                  if [ "$failed" = "True" ]; then
+                    echo "$job: Failed; el rollout se detiene sin revertir la base" >&2
+                    kubectl -n "$ns" logs "$job" --tail=50 >&2 || true
+                    exit 1
+                  fi
+                  if [ "$(date +%s)" -ge "$deadline" ]; then echo "$job: tiempo agotado" >&2; exit 1; fi
+                  sleep 10
+                done
+              done
+  - name: workloads
+    manifests:
+      kustomize:
+        paths:
+          - workloads
+    deploy:
+      kubectl: {}
+    verify:
+      - name: smoke-backend
+        container:
+          name: smoke-backend
+          image: "@@DEPLOY_TOOLS_IMAGE@@"
+          command: ["/bin/bash", "-ceu"]
+          args:
+            - |
+              gcloud container clusters get-credentials "@@GKE_CLUSTER@@" \
+                --location "@@GKE_LOCATION@@" --project "@@GKE_PROJECT@@" --dns-endpoint
+              ns="@@NAMESPACE@@"
+              for deploy in @@DEPLOYMENTS@@; do
+                kubectl -n "$ns" rollout status "deployment/$deploy" --timeout=10m
+              done
+              for svc in @@SMOKE_SERVICES@@; do
+                kubectl get --raw "/api/v1/namespaces/$ns/services/$svc:80/proxy/health/ready" >/dev/null
+                echo "$svc: ready"
+              done
