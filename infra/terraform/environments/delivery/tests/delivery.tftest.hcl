@@ -170,7 +170,8 @@ run "targets_con_aprobacion" {
     condition = (
       google_clouddeploy_target.run["bff-web"].deploy_parameters["env_USERS_MANAGEMENT_BASE_URL"] == "http://10.10.0.10" &&
       google_clouddeploy_target.run["bff-web"].deploy_parameters["service_account"] == "run-bff-web@sportapp-prod-test.iam.gserviceaccount.com" &&
-      jsondecode(google_clouddeploy_target.run["bff-web"].deploy_parameters["network_interfaces"]) == [{ network = "sportapp-prod-vpc", subnetwork = "sportapp-prod-serverless" }] &&
+      # La red VPC va fija en la plantilla (validada por precondición), nunca como parámetro.
+      !contains(keys(google_clouddeploy_target.run["bff-web"].deploy_parameters), "network_interfaces") &&
       !contains(keys(google_clouddeploy_target.run["web"].deploy_parameters), "network_interfaces")
     )
     error_message = "Los parámetros de los targets de Cloud Run repiten la configuración de Terraform."
