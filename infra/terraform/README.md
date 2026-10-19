@@ -62,7 +62,7 @@ Desarrollo no usa GCP ni credenciales en la nube. Implementa la [arquitectura Te
 | Crear o cambiar la infraestructura de producción | [6](#6-producción-en-gcp-paso-a-paso) |
 | Publicar una versión en producción | [8](#8-cómo-llegan-backend-y-frontend-a-producción) |
 | Apagar o volver a encender el ambiente local | [preparación local, sección 11](../../docs/preparacion-terraform-local.md#11-pausar-o-eliminar-el-ambiente) |
-| Suspender, reanudar o destruir producción | [preparación de GCP, sección 15](../../docs/preparacion-terraform-gcp.md#15-suspender-reanudar-y-destruir) |
+| Suspender, reanudar, destruir o recrear producción | [preparación de GCP, sección 15](../../docs/preparacion-terraform-gcp.md#15-suspender-reanudar-destruir-y-recrear) |
 | Preparar GCP, o apagar y encender el plano costoso de producción, con un solo comando | `scripts/sportapp-gcp.ps1` ([ejecución automatizada](../../docs/preparacion-terraform-gcp.md#ejecución-automatizada)) |
 
 ### 1.2 Conceptos mínimos
@@ -372,7 +372,7 @@ PostgreSQL, el emulador, los tópicos y los puertos de acceso están en `infra/k
 | Entrega (proyecto de gestión) | Cloud Build por tag, evidencia de releases, promotor y Cloud Deploy con aprobación (`environments/delivery`) |
 | Operación | Secret Manager, alertas y Binary Authorization opcional (deshabilitada) |
 
-El módulo rechaza el plan si falta Cloud SQL regional o PITR. También lo rechaza sin protección contra borrado, salvo en una [destrucción controlada](../../docs/preparacion-terraform-gcp.md#153-destruir-producción) con `destroy_confirmation` igual al ID del proyecto.
+El módulo rechaza el plan si falta Cloud SQL regional o PITR. También lo rechaza sin protección contra borrado, salvo en una [destrucción controlada](../../docs/preparacion-terraform-gcp.md#153-destruir-solamente-el-plano-operativo) con `destroy_confirmation` igual al ID del proyecto.
 
 ### 6.2 Variables y credenciales
 
@@ -467,7 +467,7 @@ El estado del bootstrap queda en `terraform.tfstate`, en esa carpeta e ignorado 
 3. Inicializa, genera el plan y haz que **otra persona** lo revise:
 
    ```powershell
-   terraform init -backend-config=backend.hcl
+   terraform init "-backend-config=backend.hcl"
    terraform plan -out=tfplan
    terraform show tfplan
    ```
@@ -489,7 +489,7 @@ El estado del bootstrap queda en `terraform.tfstate`, en esa carpeta e ignorado 
 
 Si `cloud_run_images` está vacío, no se crea ningún servicio Cloud Run. Esto permite crear la infraestructura antes de la primera release.
 
-6. Aplica después, con el mismo procedimiento (plan guardado, revisión y apply del plan), `environments/production-workloads` (base Kubernetes) y `environments/delivery` (Cloud Build y Cloud Deploy). El orden completo, incluida la autorización de la GitHub App, está en la [primera release](../../docs/preparacion-terraform-gcp.md#13-primera-release).
+6. Aplica después, con el mismo procedimiento (plan guardado, revisión y apply del plan), `environments/production-workloads` (base Kubernetes) y `environments/delivery` (Cloud Build y Cloud Deploy). El orden completo, incluida la autorización de la GitHub App, está en la [primera release](../../docs/preparacion-terraform-gcp.md#13-primera-release-y-cierre-de-la-preparación-fija).
 
 ### 6.7 Cambios posteriores
 
@@ -506,8 +506,8 @@ Si `cloud_run_images` está vacío, no se crea ningún servicio Cloud Run. Esto 
 | Agregar un secreto de aplicación | `app_secrets` |
 | Variables de un BFF | `cloud_run_env` |
 | Versión de un BFF o de la web | release y rollout aprobado de Cloud Deploy ([8](#8-cómo-llegan-backend-y-frontend-a-producción)) |
-| Suspender o reanudar producción | `suspended` en `terraform.tfvars` ([preparación de GCP, sección 15](../../docs/preparacion-terraform-gcp.md#15-suspender-reanudar-y-destruir)) |
-| Destruir producción | `-var deletion_protection=false -var destroy_confirmation=<proyecto>` ([destrucción controlada](../../docs/preparacion-terraform-gcp.md#153-destruir-producción)) |
+| Suspender o reanudar producción | `-var="suspended=true|false"` en un plan revisado ([preparación de GCP, sección 15](../../docs/preparacion-terraform-gcp.md#15-suspender-reanudar-destruir-y-recrear)) |
+| Destruir producción | `-var deletion_protection=false -var destroy_confirmation=<proyecto>` ([destrucción controlada](../../docs/preparacion-terraform-gcp.md#153-destruir-solamente-el-plano-operativo)) |
 
 ## 7. Producción sin acceso GCP desde GitHub
 
@@ -560,7 +560,7 @@ Recorrido de una release:
 3. Cada rollout queda pendiente de aprobación. En `backend-gke`, la etapa `production-gke-migrations` aplica solo los Jobs de esa release y espera `Complete`; recién entonces puede promoverse y aprobarse `production-gke` (Deployments, rollout y smoke).
 4. Rollback: una nueva release con los digests anteriores, aprobación, readiness y smoke. Los tags nunca se mueven y las migraciones destructivas no se revierten automáticamente.
 
-Primera release, rollback y verificaciones: [Preparación de GCP para Terraform y entrega](../../docs/preparacion-terraform-gcp.md#13-primera-release).
+Primera release, rollback y verificaciones: [Preparación de GCP para Terraform y entrega](../../docs/preparacion-terraform-gcp.md#13-primera-release-y-cierre-de-la-preparación-fija).
 
 ## 9. Pruebas
 
