@@ -1,5 +1,5 @@
 # Copiar como backend.hcl (ignorado por Git) y ejecutar desde la estación del operador:
-#   terraform init -backend-config=backend.hcl
+#   terraform init "-backend-config=backend.hcl"
 #
 # Salida "state_buckets.production" del bootstrap.
 bucket = "sportapp-mgmt-000000-tfstate-production"

@@ -9,7 +9,7 @@ terraform {
   }
 
   # Mismo bucket que environments/production, otro prefijo:
-  #   terraform init -backend-config=backend.hcl
+  #   terraform init "-backend-config=backend.hcl"
   backend "gcs" {
     prefix = "sportapp/delivery"
   }

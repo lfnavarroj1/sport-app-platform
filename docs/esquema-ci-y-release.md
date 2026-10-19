@@ -126,7 +126,7 @@ Contrato:   v1.0.0 · compatible
 | Backend | `ci.yml`, `release-backend.yml` (`deliver-development.yml` debe retirarse o transformarse) |
 | Frontend | `ci-web.yml`, `release-web.yml` (no se crea entrega automática de development) |
 | Móvil | `ci-mobile.yml`, `release-mobile.yml` |
-| Plataforma | `validate-platform.yml` (implementado: Markdown, YAML, JSON, scripts y Terraform con mocks); `prepare-platform-release.yml` y `test-platform-release.yml` (pendientes). La promoción y el rollback **no** son workflows de GitHub: son el trigger interno `promote-release` y Cloud Deploy con aprobación ([preparación de GCP, secciones 11 a 14](preparacion-terraform-gcp.md#11-configurar-construcción-y-publicación)) |
+| Plataforma | `validate-platform.yml` (implementado: Markdown, YAML, JSON, scripts y Terraform con mocks); `prepare-platform-release.yml` y `test-platform-release.yml` (pendientes). La promoción y el rollback **no** son workflows de GitHub: son el trigger interno `promote-release` y Cloud Deploy con aprobación ([preparación de GCP, secciones 10 a 14](preparacion-terraform-gcp.md#10-configurar-construcción-y-publicación)) |
 
 ## Condiciones previas de activación
 

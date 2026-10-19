@@ -78,7 +78,7 @@ Cualquier workflow antiguo que todavía intente autenticarse falla en el interca
 
 1. `environments/production`: genera el plan con las nuevas variables (`delivery_identities`; elimina `artifact_registry_writers` de `gcp.auto.tfvars`). Si el repositorio `sportapp` ya tiene imágenes en uso, primero vuelve a publicar la release con Cloud Build en `sportapp-backend`/`sportapp-frontend` y crea las revisiones nuevas; recién después aplica el plan que borra `sportapp`.
 2. `environments/production-workloads`: el plan debe mostrar los Deployments, los Jobs y `terraform_data.migration_revision` como «removed from state» (siguen corriendo) y mover los Services de `kustomization_resource.config` a `kustomization_resource.services`. El ConfigMap con sufijo de hash solo puede borrarse cuando el primer rollout de Cloud Deploy haya reemplazado los pods (sus manifiestos usan `sportapp-runtime` sin sufijo): aplica esta raíz después de ese rollout o acepta que los pods existentes conserven su configuración hasta entonces.
-3. `environments/delivery`: aplica según la [primera release](preparacion-terraform-gcp.md#13-primera-release).
+3. `environments/delivery`: aplica según la [primera release](preparacion-terraform-gcp.md#13-primera-release-y-cierre-de-la-preparación-fija).
 4. Ejecuta de nuevo `terraform plan` en las tres raíces: no debe proponer cambios sobre imágenes, revisiones, Deployments ni Jobs.
 
 ## 7. Si algo sale mal

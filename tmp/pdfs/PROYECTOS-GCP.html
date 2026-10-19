@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proyectos de Google Cloud de SportApp</title>
+<style>
+  @page { size: A4; margin: 18mm 17mm 19mm 17mm; }
+  * { box-sizing: border-box; }
+  html { font-family: "Segoe UI", Arial, sans-serif; color: #172033; background: #fff; }
+  body { margin: 0; font-size: 10.3pt; line-height: 1.48; }
+  .cover {
+    min-height: 258mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 22mm 13mm;
+    background: linear-gradient(145deg, #102a43 0%, #174b72 64%, #1f7a8c 100%);
+    color: white;
+    page-break-after: always;
+  }
+  .cover .eyebrow { font-size: 11pt; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.82; }
+  .cover h1 { font-size: 31pt; line-height: 1.12; margin: 14mm 0 7mm; font-weight: 720; }
+  .cover .subtitle { max-width: 130mm; font-size: 15pt; line-height: 1.45; color: #d9edf4; }
+  .cover .rule { width: 32mm; height: 2.5mm; background: #66d9c8; margin: 8mm 0; border-radius: 3px; }
+  .cover .meta { margin-top: 28mm; font-size: 10pt; color: #c7dce8; }
+  .toc { page-break-after: always; padding-top: 4mm; }
+  .toc h2 { border: 0; margin-top: 0; font-size: 23pt; }
+  .toc ol { list-style: none; padding: 0; margin-top: 10mm; }
+  .toc li { margin: 3.2mm 0; border-bottom: 1px dotted #b7c3ce; padding-bottom: 1.5mm; }
+  .toc li.level-3 { margin-left: 8mm; font-size: 9.5pt; }
+  .toc a { color: #174b72; text-decoration: none; }
+  main { padding-bottom: 5mm; }
+  h2 { color: #123f5e; font-size: 20pt; margin: 12mm 0 4mm; padding-bottom: 2mm; border-bottom: 1.4px solid #5fb9ad; break-after: avoid; }
+  h3 { color: #1f6472; font-size: 13.5pt; margin: 8mm 0 2.5mm; break-after: avoid; }
+  p { margin: 0 0 4mm; orphans: 3; widows: 3; }
+  ul, ol { margin: 2mm 0 5mm 6mm; padding-left: 6mm; }
+  li { margin: 1.5mm 0; }
+  strong { color: #102a43; }
+  code { font-family: Consolas, "Courier New", monospace; font-size: 9pt; color: #8a2c3b; background: #f4f6f8; padding: 0.2mm 1mm; border-radius: 2px; }
+  pre { margin: 4mm 0 6mm; padding: 4mm; border-left: 3px solid #2d8c83; border-radius: 3px; background: #f3f7f8; color: #20323d; white-space: pre-wrap; overflow-wrap: anywhere; break-inside: avoid; }
+  pre code { padding: 0; color: inherit; background: transparent; font-size: 8.6pt; line-height: 1.45; }
+  table { width: 100%; border-collapse: collapse; margin: 4mm 0 7mm; font-size: 8.9pt; break-inside: avoid; }
+  th { padding: 2.7mm 2.4mm; text-align: left; color: white; background: #174b72; font-weight: 650; }
+  td { padding: 2.4mm; vertical-align: top; border-bottom: 1px solid #d4dde4; }
+  tbody tr:nth-child(even) { background: #f5f8fa; }
+  a { color: #126b78; }
+  .page-footer { position: fixed; left: 0; right: 0; bottom: -12mm; text-align: center; font-size: 8pt; color: #718096; }
+  .section-start { page-break-before: always; }
+</style>
+</head>
+<body>
+  <section class="cover">
+    <div class="eyebrow">SportApp - Plataforma</div>
+    <div class="rule"></div>
+    <h1>Proyectos de Google Cloud</h1>
+    <div class="subtitle">Separación entre el plano de gestión y la infraestructura operativa de producción.</div>
+    <div class="meta">Documento de arquitectura y operación<br>Versión 2026-10-18</div>
+  </section>
+  <section class="toc">
+    <h2>Contenido</h2>
+    <ol><li class="level-2"><a href="#resumen">Resumen</a></li><li class="level-2"><a href="#1-proyecto-de-gestion">1. Proyecto de gestión</a></li><li class="level-3"><a href="#por-que-se-conserva">Por qué se conserva</a></li><li class="level-2"><a href="#2-proyecto-de-produccion">2. Proyecto de producción</a></li><li class="level-3"><a href="#por-que-puede-recrearse">Por qué puede recrearse</a></li><li class="level-2"><a href="#3-razones-para-separar-los-proyectos">3. Razones para separar los proyectos</a></li><li class="level-3"><a href="#seguridad">Seguridad</a></li><li class="level-3"><a href="#ciclo-de-vida">Ciclo de vida</a></li><li class="level-3"><a href="#control-de-costos">Control de costos</a></li><li class="level-3"><a href="#auditoria">Auditoría</a></li><li class="level-2"><a href="#4-relacion-entre-los-proyectos">4. Relación entre los proyectos</a></li><li class="level-2"><a href="#5-facturacion">5. Facturación</a></li><li class="level-2"><a href="#6-orden-de-creacion">6. Orden de creación</a></li><li class="level-2"><a href="#7-que-se-conserva-al-apagar-produccion">7. Qué se conserva al apagar producción</a></li></ol>
+  </section>
+  <main><p>SportApp utiliza dos proyectos de Google Cloud porque la infraestructura de control y las cargas de la aplicación tienen ciclos de vida, permisos y costos diferentes.</p>
+<h2 id="resumen">Resumen</h2>
+<table><thead><tr><th>Proyecto</th><th>Variable utilizada</th><th>Función</th><th>Ciclo de vida</th></tr></thead><tbody><tr><td>Gestión</td><td><code>$mgmt</code></td><td>Controla Terraform y el proceso de entrega</td><td>Fijo: se crea una vez y se conserva</td></tr><tr><td>Producción</td><td><code>$production</code></td><td>Ejecuta la aplicación y sus servicios</td><td>Operativo: sus recursos pueden destruirse y recrearse</td></tr></tbody></table>
+<p>Desarrollo no requiere un tercer proyecto de GCP. Se ejecuta localmente mediante <code>infra/terraform/environments/local</code>.</p>
+<h2 id="1-proyecto-de-gestion">1. Proyecto de gestión</h2>
+<p>Ejemplo de identificador:</p>
+<pre data-language="text"><code>sportapp-mgmt-1234</code></pre>
+<p>El valor real se guarda localmente en la variable <code>$mgmt</code> y no debe escribirse en la documentación pública.</p>
+<p>Este proyecto contiene el plano de control de la plataforma:</p>
+<ul><li>buckets que almacenan el estado remoto de Terraform;</li><li>cuentas <code>tf-plan-production</code> y <code>tf-apply-production</code>;</li><li>cuentas separadas para construir, promover y desplegar;</li><li>conexión de Cloud Build con GitHub;</li><li>triggers de Cloud Build;</li><li>buckets de evidencia de las releases;</li><li>pipelines y targets de Cloud Deploy;</li><li>permisos de los operadores y aprobadores.</li></ul>
+<p>El proyecto de gestión no ejecuta las cargas de SportApp ni contiene sus bases de datos.</p>
+<h3 id="por-que-se-conserva">Por qué se conserva</h3>
+<p>Este proyecto permite destruir temporalmente la infraestructura costosa de producción sin perder:</p>
+<ul><li>el estado de Terraform;</li><li>las identidades y permisos de operación;</li><li>la conexión autorizada con GitHub;</li><li>la configuración de Cloud Build y Cloud Deploy;</li><li>la evidencia histórica de las releases.</li></ul>
+<p>No se debe ejecutar <code>terraform destroy</code> en:</p>
+<pre data-language="text"><code>infra/terraform/bootstrap/gcp-state
+infra/terraform/environments/delivery</code></pre>
+<p>para apagar o eliminar las cargas de producción.</p>
+<h2 id="2-proyecto-de-produccion">2. Proyecto de producción</h2>
+<p>Ejemplo de identificador:</p>
+<pre data-language="text"><code>sportapp-prod-1234</code></pre>
+<p>El valor real se guarda localmente en la variable <code>$production</code> y no debe escribirse en la documentación pública.</p>
+<p>Este proyecto contiene el plano operativo de SportApp:</p>
+<ul><li>VPC, subredes, firewall y conectividad privada;</li><li>clúster GKE;</li><li>servicios Cloud Run;</li><li>instancia Cloud SQL y sus bases de datos;</li><li>tópicos y suscripciones de Pub/Sub;</li><li>repositorios de Artifact Registry;</li><li>Secret Manager;</li><li>cuentas de servicio de las cargas;</li><li>monitoreo, alertas y registros de la aplicación.</li></ul>
+<p>Sus recursos son administrados principalmente por estas raíces:</p>
+<pre data-language="text"><code>infra/terraform/environments/production
+infra/terraform/environments/production-workloads</code></pre>
+<p>La primera crea la infraestructura de GCP. La segunda crea la base Kubernetes compartida dentro de GKE, como el namespace, los Services, las cuentas Kubernetes, el ConfigMap, los Secrets y el RBAC.</p>
+<h3 id="por-que-puede-recrearse">Por qué puede recrearse</h3>
+<p>Los recursos de producción concentran la mayor parte del costo. Cuando el ambiente no se utilizará durante varios días o semanas, pueden destruirse de forma controlada y recrearse posteriormente usando el estado y las identidades conservadas en el proyecto de gestión.</p>
+<p>El proyecto de producción y su vinculación de facturación se conservan. Lo que se destruye son los recursos administrados por <code>environments/production</code>.</p>
+<p>Antes de destruirlos se deben respaldar los datos que deban conservarse. La destrucción puede eliminar bases de datos, secretos, imágenes y otros datos operativos.</p>
+<h2 id="3-razones-para-separar-los-proyectos">3. Razones para separar los proyectos</h2>
+<h3 id="seguridad">Seguridad</h3>
+<p>La separación impide que una identidad destinada a construir o desplegar aplicaciones obtenga control sobre toda la infraestructura.</p>
+<ul><li>Los operadores humanos ejecutan Terraform mediante <code>tf-apply-production</code>.</li><li>Cloud Build construye y publica imágenes, pero no aprovisiona infraestructura.</li><li>Cloud Deploy actualiza cargas previamente autorizadas, pero no administra proyectos, facturación, redes o bases de datos.</li><li>GitHub y GitHub Actions no reciben credenciales ni identidades de GCP.</li></ul>
+<h3 id="ciclo-de-vida">Ciclo de vida</h3>
+<p>El plano de control es estable, mientras que el plano operativo puede suspenderse, destruirse o recrearse. Si todo estuviera en un solo proyecto, una eliminación amplia podría borrar también el estado de Terraform y el mecanismo necesario para reconstruir el ambiente.</p>
+<h3 id="control-de-costos">Control de costos</h3>
+<p>La mayor parte del consumo corresponde a GKE, Cloud SQL, Cloud Run, red, almacenamiento e imágenes del proyecto de producción. Separarlos facilita identificar esos costos y eliminar los recursos operativos sin desmontar el proceso de administración.</p>
+<p>El proyecto de gestión también puede generar costos, aunque normalmente menores. Los buckets de estado y evidencia, Cloud Build, registros y otros servicios deben seguir siendo monitoreados.</p>
+<h3 id="auditoria">Auditoría</h3>
+<p>Los cambios de infraestructura, las construcciones y los despliegues quedan separados:</p>
+<pre data-language="text"><code>Operador autorizado
+  → Terraform
+  → proyectos de gestión y producción
+
+Tag SemVer en GitHub
+  → Cloud Build en gestión
+  → imagen en Artifact Registry de producción
+  → Cloud Deploy en gestión
+  → aprobación humana
+  → GKE o Cloud Run en producción</code></pre>
+<h2 id="4-relacion-entre-los-proyectos">4. Relación entre los proyectos</h2>
+<p>Las identidades de entrega viven en el proyecto de gestión y reciben permisos limitados sobre recursos concretos del proyecto de producción.</p>
+<table><thead><tr><th>Identidad de gestión</th><th>Acceso permitido en producción</th></tr></thead><tbody><tr><td><code>cloud-build-backend</code></td><td>publicar solamente en el repositorio de imágenes del backend</td></tr><tr><td><code>cloud-build-frontend</code></td><td>publicar solamente en el repositorio de imágenes del frontend</td></tr><tr><td><code>release-promoter</code></td><td>leer las imágenes y preparar releases en pipelines existentes</td></tr><tr><td><code>cloud-deploy-execution</code></td><td>leer imágenes y actualizar los destinos autorizados de GKE y Cloud Run</td></tr><tr><td><code>tf-apply-production</code></td><td>aplicar manualmente la infraestructura aprobada</td></tr></tbody></table>
+<p>Ninguna cuenta de Cloud Build o Cloud Deploy puede impersonar <code>tf-apply-production</code>.</p>
+<h2 id="5-facturacion">5. Facturación</h2>
+<p>Los dos proyectos se vinculan a una cuenta de facturación porque ambos pueden consumir servicios de Google Cloud:</p>
+<pre data-language="powershell"><code>gcloud billing projects describe $mgmt
+gcloud billing projects describe $production</code></pre>
+<p>Esto no significa que se pague dos veces por el mismo recurso. Cada servicio cobra su consumo en el proyecto donde está creado.</p>
+<ul><li>Los costos del plano de control aparecen en el proyecto de gestión.</li><li>Los costos de ejecución de SportApp aparecen en el proyecto de producción.</li></ul>
+<p>Los presupuestos y alertas sirven para avisar sobre el consumo, pero no detienen automáticamente los servicios.</p>
+<h2 id="6-orden-de-creacion">6. Orden de creación</h2>
+<p>La preparación inicial se realiza en este orden:</p>
+<ol><li>Crear los proyectos de gestión y producción y vincularlos a facturación.</li><li>Aplicar <code>infra/terraform/bootstrap/gcp-state</code>.</li><li>Aplicar <code>infra/terraform/environments/production</code>.</li><li>Aplicar <code>infra/terraform/environments/production-workloads</code>.</li><li>Aplicar y autorizar <code>infra/terraform/environments/delivery</code>.</li><li>Habilitar las releases por tags SemVer.</li></ol>
+<p>Los comandos y archivos necesarios para ejecutar este orden se encuentran en <a href="docs/preparacion-terraform-gcp.md"><code>docs/preparacion-terraform-gcp.md</code></a>.</p>
+<h2 id="7-que-se-conserva-al-apagar-produccion">7. Qué se conserva al apagar producción</h2>
+<table><thead><tr><th>Se conserva</th><th>Se puede destruir y recrear</th></tr></thead><tbody><tr><td>proyecto de gestión</td><td>GKE</td></tr><tr><td>proyecto de producción</td><td>Cloud SQL y sus datos, salvo respaldo externo</td></tr><tr><td>vinculación de facturación</td><td>servicios Cloud Run</td></tr><tr><td>buckets y estado de Terraform</td><td>Artifact Registry y sus imágenes</td></tr><tr><td>identidades e IAM del bootstrap</td><td>secretos operativos</td></tr><tr><td>conexión de Cloud Build con GitHub</td><td>Pub/Sub, red y observabilidad de producción</td></tr><tr><td>configuración de Cloud Build y Cloud Deploy</td><td>objetos Kubernetes del clúster eliminado</td></tr></tbody></table>
+<p>La separación en dos proyectos existe para que el sistema de control y reconstrucción permanezca disponible incluso cuando la infraestructura operativa de SportApp se elimina para reducir costos.</p></main>
+  <div class="page-footer">SportApp - Arquitectura GCP</div>
+</body>
+</html>

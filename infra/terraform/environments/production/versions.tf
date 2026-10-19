@@ -14,7 +14,7 @@ terraform {
   }
 
   # El bucket (y la impersonación local, si aplica) se pasan con
-  #   terraform init -backend-config=backend.hcl
+  #   terraform init "-backend-config=backend.hcl"
   backend "gcs" {
     prefix = "sportapp/production"
   }
