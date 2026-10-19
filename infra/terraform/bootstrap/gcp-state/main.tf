@@ -14,8 +14,11 @@ locals {
   # Mínimo para que Terraform del ambiente habilite el resto de APIs.
   environment_base_services = ["cloudresourcemanager.googleapis.com", "serviceusage.googleapis.com"]
 
+  # serviceUsageConsumer: los providers cobran la cuota al proyecto del ambiente
+  # (user_project_override), lo que exige serviceusage.services.use.
   plan_roles = [
     "roles/iam.securityReviewer",
+    "roles/serviceusage.serviceUsageConsumer",
     "roles/viewer",
   ]
 
@@ -50,10 +53,13 @@ locals {
   # Roles de proyecto (gestión) de cada identidad de entrega. Los permisos
   # sobre recursos concretos (repositorios, buckets, pipelines, servicios) los
   # conceden las raíces dueñas de esos recursos.
+  # clouddeploy.viewer (solo lectura): `gcloud deploy releases create` espera la
+  # operación de la release (clouddeploy.operations.get, a nivel de proyecto) antes
+  # de crear el rollout; releaser sobre cada pipeline no cubre las operaciones.
   delivery_project_roles = {
     build_backend    = ["roles/logging.logWriter"]
     build_frontend   = ["roles/logging.logWriter"]
-    release_promoter = ["roles/logging.logWriter"]
+    release_promoter = ["roles/logging.logWriter", "roles/clouddeploy.viewer"]
     deploy_execution = ["roles/logging.logWriter", "roles/clouddeploy.jobRunner"]
   }
 
@@ -324,6 +330,17 @@ resource "google_project_iam_member" "delivery_apply_buckets" {
     description = "Buckets de evidencia y de Cloud Deploy creados por environments/delivery."
     expression  = "resource.name.startsWith(\"projects/_/buckets/${var.management_project_id}-delivery-\")"
   }
+}
+
+# Al autorizar la GitHub App, el agente de Cloud Build guarda el token OAuth de la
+# conexión en Secret Manager del proyecto de gestión. La consola concede este rol
+# sola; la conexión creada con gcloud (scripts/sportapp-gcp.ps1) lo necesita aquí.
+resource "google_project_iam_member" "cloudbuild_agent_connection_secrets" {
+  count = local.delivery_env == null ? 0 : 1
+
+  project = var.management_project_id
+  role    = "roles/secretmanager.admin"
+  member  = local.cloudbuild_agent
 }
 
 # environments/delivery lee del estado de producción los recursos destino.

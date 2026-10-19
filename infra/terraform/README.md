@@ -63,6 +63,7 @@ Desarrollo no usa GCP ni credenciales en la nube. Implementa la [arquitectura Te
 | Publicar una versión en producción | [8](#8-cómo-llegan-backend-y-frontend-a-producción) |
 | Apagar o volver a encender el ambiente local | [preparación local, sección 11](../../docs/preparacion-terraform-local.md#11-pausar-o-eliminar-el-ambiente) |
 | Suspender, reanudar o destruir producción | [preparación de GCP, sección 15](../../docs/preparacion-terraform-gcp.md#15-suspender-reanudar-y-destruir) |
+| Preparar GCP, o apagar y encender el plano costoso de producción, con un solo comando | `scripts/sportapp-gcp.ps1` ([ejecución automatizada](../../docs/preparacion-terraform-gcp.md#ejecución-automatizada)) |
 
 ### 1.2 Conceptos mínimos
 
@@ -408,7 +409,7 @@ gcloud version
 
 ### 6.4 Preparar los proyectos
 
-Una sola vez. Se necesitan dos proyectos: **gestión** (estado e identidades; nunca se destruye) y **producción**. Los ID son únicos a nivel global. Puedes definirlos directamente en la terminal o guardarlos en `platform\.env.ps1` (local, ignorado por Git) y cargarlos con `. .\.env.ps1`, como explica la [preparación de GCP](../../docs/preparacion-terraform-gcp.md#4-definir-identificadores). El ejemplo usa valores literales.
+Una sola vez. Se necesitan dos proyectos: **gestión** (estado e identidades; nunca se destruye) y **producción**. Los ID son únicos a nivel global. Puedes definirlos directamente en la terminal o guardarlos en `platform\.env.ps1` (local, ignorado por Git) y cargarlos con `. .\.env.ps1` (con un punto y un espacio al inicio; sin ellos las variables no quedan en la sesión), como explica la [preparación de GCP](../../docs/preparacion-terraform-gcp.md#4-definir-identificadores). El ejemplo usa valores literales.
 
 ```powershell
 gcloud auth login

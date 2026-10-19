@@ -1,9 +1,12 @@
 # Credenciales: nunca llaves JSON. Solo la estación del operador, con ADC e
 # impersonación de tf-apply-production; ninguna automatización ejecuta esta raíz.
+# La cuota se cobra a producción, no al proyecto de gestión de la cuenta impersonada.
 provider "google" {
   project                     = var.project_id
   region                      = var.region
   impersonate_service_account = var.impersonate_service_account
+  billing_project             = var.project_id
+  user_project_override       = true
 }
 
 # Token de corta vida de la identidad que ejecuta Terraform; no queda en el estado.
