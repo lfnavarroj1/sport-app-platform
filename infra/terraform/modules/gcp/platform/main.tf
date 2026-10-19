@@ -254,6 +254,8 @@ module "iam" {
   service_accounts = local.service_accounts
   gke_namespace    = var.gke_namespace
   workload_pool    = module.gke.workload_pool
+
+  depends_on = [module.project_services]
 }
 
 # Un repositorio por componente: cada cuenta de Cloud Build solo escribe en el
@@ -342,6 +344,10 @@ module "cloud_sql" {
     retained_backups               = var.cloud_sql.retained_backups
     transaction_log_retention_days = var.cloud_sql.transaction_log_retention_days
   }
+
+  # Sus secretos de contraseña solo dependen del proyecto: sin esto se crean en
+  # paralelo con la habilitación de Secret Manager y fallan en el primer apply.
+  depends_on = [module.project_services]
 }
 
 # Cada carga solo lee la contraseña del usuario de su dominio.

@@ -185,6 +185,21 @@ resource "google_storage_bucket_iam_member" "evidence_writer" {
   member = "serviceAccount:${local.build_identity[each.key]}"
 }
 
+# Lectura de su propio bucket para la cuenta de build: Cloud Build consulta el
+# bucket antes de subir los artifacts (storage.buckets.get) y `gcloud storage cp`
+# consulta el objeto de destino (storage.objects.get). Ninguno permite
+# sobrescribir ni borrar, así que la evidencia sigue siendo inmutable.
+resource "google_storage_bucket_iam_member" "evidence_writer_read" {
+  for_each = {
+    for pair in setproduct(keys(local.evidence_buckets), ["roles/storage.legacyBucketReader", "roles/storage.objectViewer"]) :
+    "${pair[0]}/${pair[1]}" => { component = pair[0], role = pair[1] }
+  }
+
+  bucket = google_storage_bucket.evidence[each.value.component].name
+  role   = each.value.role
+  member = "serviceAccount:${local.build_identity[each.value.component]}"
+}
+
 resource "google_storage_bucket_iam_member" "evidence_reader" {
   for_each = local.evidence_buckets
 
@@ -240,11 +255,30 @@ resource "google_storage_bucket_iam_member" "artifacts_execution" {
   member = "serviceAccount:${local.ids.deploy_execution}"
 }
 
+# `gcloud deploy releases create` (promotor) y el render y despliegue de Cloud
+# Deploy (ejecución) consultan el bucket antes de usarlo (storage.buckets.get),
+# que los roles de objetos no incluyen. legacyBucketReader solo añade esa
+# consulta y el listado.
+resource "google_storage_bucket_iam_member" "clouddeploy_bucket_reader" {
+  for_each = {
+    "source/promoter"     = { bucket = "source", member = local.ids.release_promoter }
+    "source/execution"    = { bucket = "source", member = local.ids.deploy_execution }
+    "artifacts/execution" = { bucket = "artifacts", member = local.ids.deploy_execution }
+  }
+
+  bucket = google_storage_bucket.clouddeploy[each.value.bucket].name
+  role   = "roles/storage.legacyBucketReader"
+  member = "serviceAccount:${each.value.member}"
+}
+
 # --- Conexión de Cloud Build con GitHub (originada en GCP) -------------------
 #
-# Terraform crea la conexión pendiente de autorización. Un operador completa
-# una vez la instalación de la GitHub App en la consola de GCP
-# (docs/preparacion-terraform-gcp.md, sección 10): ese paso escribe
+# La API exige github_config al crear la conexión y el provider omite el bloque
+# vacío, así que Terraform no puede crear una conexión pendiente sin un PAT. La
+# crea el operador con `gcloud builds connections create github github` y se
+# importa (scripts/sportapp-gcp.ps1 lo hace solo; a mano: sección 13.2 de
+# docs/preparacion-terraform-gcp.md). Después el operador completa una vez la
+# instalación de la GitHub App en la consola de GCP: ese paso escribe
 # github_config (instalación y token OAuth, guardado por Cloud Build en Secret
 # Manager), que por eso Terraform no reconcilia. Ningún PAT ni secreto de
 # GitHub pasa por Terraform.

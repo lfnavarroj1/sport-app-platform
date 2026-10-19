@@ -121,12 +121,21 @@ run "identidades_de_entrega_separadas" {
     error_message = "Cuatro identidades de entrega separadas, con los nombres parametrizados."
   }
 
-  # Roles de proyecto: solo logs y, para la ejecución, el runner de Cloud Deploy.
+  # Roles de proyecto: solo logs, el runner de Cloud Deploy para la ejecución y la
+  # lectura de Cloud Deploy para el promotor (espera la operación de la release).
   assert {
     condition = alltrue([
-      for b in google_project_iam_member.delivery : contains(["roles/logging.logWriter", "roles/clouddeploy.jobRunner"], b.role)
+      for b in google_project_iam_member.delivery : contains(["roles/logging.logWriter", "roles/clouddeploy.jobRunner", "roles/clouddeploy.viewer"], b.role)
     ])
     error_message = "Las identidades de entrega no reciben roles administrativos de proyecto."
+  }
+
+  assert {
+    condition = (
+      toset([for k, b in google_project_iam_member.delivery : b.role if startswith(k, "release_promoter/")]) == toset(["roles/logging.logWriter", "roles/clouddeploy.viewer"]) &&
+      length([for k, b in google_project_iam_member.delivery : b.role if b.role == "roles/clouddeploy.viewer" && !startswith(k, "release_promoter/")]) == 0
+    )
+    error_message = "Solo release-promoter lee Cloud Deploy a nivel de proyecto, y sin permisos de escritura."
   }
 
   assert {
