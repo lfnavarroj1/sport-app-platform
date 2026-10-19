@@ -13,16 +13,16 @@ acceptedStories: []
 components:
   backend:
     repository: https://github.com/lfnavarroj1/sport-app-backend
-    version: null
-    ref: null
-    commit: f4ff77f55f63946c946889f39e3eb6039c5dd6bb
+    version: "0.2.0"
+    ref: "v0.2.0"
+    commit: "0ba8238bdc9dc3bab43ac753a39d57e881aabaa7"
     contractVersion: null
     artifacts: {}
   frontend:
     repository: https://github.com/lfnavarroj1/sport-app-frontend
-    version: null
-    ref: null
-    commit: 15f24c976d5cde8e1b5928be3c87fcf6b60d86ad
+    version: "0.2.0"
+    ref: "v0.2.0"
+    commit: "4f5055fdb822c28ce544902db2237729846628a2"
     expectedBffContract: null
     artifact: null
   mobile:
