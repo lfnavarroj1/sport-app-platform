@@ -244,9 +244,11 @@ resource "kubernetes_role_v1" "cloud_deploy" {
     verbs      = ["get", "list", "watch", "create", "update", "patch"]
   }
 
+  # Skaffold consulta también statefulsets al esperar que el despliegue se
+  # estabilice, aunque SportApp no tenga ninguno: solo lectura.
   rule {
     api_groups = ["apps"]
-    resources  = ["replicasets"]
+    resources  = ["replicasets", "statefulsets"]
     verbs      = ["get", "list", "watch"]
   }
 
@@ -268,10 +270,12 @@ resource "kubernetes_role_v1" "cloud_deploy" {
     verbs      = ["get"]
   }
 
+  # El smoke de la etapa workloads llama a services/<api>:80/proxy; RBAC compara
+  # el nombre de la URL, que incluye el puerto.
   rule {
     api_groups     = [""]
     resources      = ["services/proxy"]
-    resource_names = keys(local.internal_apis)
+    resource_names = concat(keys(local.internal_apis), [for name in keys(local.internal_apis) : "${name}:80"])
     verbs          = ["get"]
   }
 }
