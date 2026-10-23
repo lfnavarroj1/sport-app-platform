@@ -62,13 +62,16 @@ locals {
         cpu             = local.production.cloud_run_deploy_config[svc].cpu
         memory          = local.production.cloud_run_deploy_config[svc].memory
       },
-      local.production.cloud_run_deploy_config[svc].vpc_subnetwork == null ? {} : {
-        network_interfaces = jsonencode([{
-          network    = local.production.cloud_run_deploy_config[svc].vpc_network
-          subnetwork = local.production.cloud_run_deploy_config[svc].vpc_subnetwork
-        }])
-      },
       { for k, v in local.production.cloud_run_deploy_config[svc].env : "env_${k}" => v },
+    )
+  }
+
+  # Red VPC escrita en la plantilla (anotación network-interfaces). No viaja como
+  # parámetro porque Skaffold no admite comillas en --set; se valida contra Terraform.
+  cloud_run_template_network = {
+    for svc, t in local.cloud_run_targets : svc => try(
+      jsondecode(regex("run\\.googleapis\\.com/network-interfaces: '([^']+)'", file("${path.module}/../../../../deploy/clouddeploy/${t.template}/service.yaml"))[0]),
+      null,
     )
   }
 
@@ -436,6 +439,15 @@ resource "google_clouddeploy_target" "run" {
     precondition {
       condition     = toset(keys(local.cloud_run_params[each.key])) == local.cloud_run_template_params[each.key]
       error_message = "Los parámetros del target no coinciden con los from-param de la plantilla de Cloud Run: actualice deploy/clouddeploy para que un rollout no cambie la configuración de Terraform."
+    }
+    precondition {
+      condition = local.cloud_run_template_network[each.key] == (
+        local.production.cloud_run_deploy_config[each.key].vpc_subnetwork == null ? null : [{
+          network    = local.production.cloud_run_deploy_config[each.key].vpc_network
+          subnetwork = local.production.cloud_run_deploy_config[each.key].vpc_subnetwork
+        }]
+      )
+      error_message = "La anotación network-interfaces de la plantilla de Cloud Run no coincide con la red VPC de Terraform: actualice deploy/clouddeploy."
     }
   }
 }

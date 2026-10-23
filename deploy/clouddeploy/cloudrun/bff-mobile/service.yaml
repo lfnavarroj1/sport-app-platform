@@ -17,7 +17,9 @@ spec:
         run.googleapis.com/cpu-throttling: "true"
         run.googleapis.com/startup-cpu-boost: "true"
         run.googleapis.com/vpc-access-egress: private-ranges-only
-        run.googleapis.com/network-interfaces: "[]" # from-param: ${network_interfaces}
+        # Fija, no from-param: Skaffold no admite comillas en los parámetros (--set).
+        # environments/delivery falla si no coincide con la red de Terraform.
+        run.googleapis.com/network-interfaces: '[{"network":"sportapp-prod-vpc","subnetwork":"sportapp-prod-serverless"}]'
     spec:
       serviceAccountName: run-bff-mobile # from-param: ${service_account}
       containerConcurrency: 80 # from-param: ${concurrency}
