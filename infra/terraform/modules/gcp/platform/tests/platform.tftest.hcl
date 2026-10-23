@@ -332,8 +332,8 @@ run "entrega_separada" {
   # Cada cuenta de Cloud Build escribe solo en su repositorio; nadie más escribe.
   assert {
     condition = (
-      local.artifact_repositories.backend.writers == { cloud-build-backend = "serviceAccount:cloud-build-backend@sportapp-mgmt-test.iam.gserviceaccount.com" } &&
-      local.artifact_repositories.frontend.writers == { cloud-build-frontend = "serviceAccount:cloud-build-frontend@sportapp-mgmt-test.iam.gserviceaccount.com" }
+      local.artifact_repository_writers.backend == { cloud-build-backend = "serviceAccount:cloud-build-backend@sportapp-mgmt-test.iam.gserviceaccount.com" } &&
+      local.artifact_repository_writers.frontend == { cloud-build-frontend = "serviceAccount:cloud-build-frontend@sportapp-mgmt-test.iam.gserviceaccount.com" }
     )
     error_message = "cloud-build-backend solo escribe en sportapp-backend y cloud-build-frontend solo en sportapp-frontend."
   }
@@ -341,10 +341,10 @@ run "entrega_separada" {
   # Ejecución y promoción solo leen; las cuentas de build no leen el repositorio ajeno.
   assert {
     condition = alltrue([
-      for key, repo in local.artifact_repositories : (
-        repo.readers["deploy-execution"] == "serviceAccount:cloud-deploy-execution@sportapp-mgmt-test.iam.gserviceaccount.com" &&
-        repo.readers["release-promoter"] == "serviceAccount:release-promoter@sportapp-mgmt-test.iam.gserviceaccount.com" &&
-        !anytrue([for k in keys(repo.readers) : strcontains(k, "cloud-build")])
+      for key, readers in local.artifact_repository_readers : (
+        readers["deploy-execution"] == "serviceAccount:cloud-deploy-execution@sportapp-mgmt-test.iam.gserviceaccount.com" &&
+        readers["release-promoter"] == "serviceAccount:release-promoter@sportapp-mgmt-test.iam.gserviceaccount.com" &&
+        !anytrue([for k in keys(readers) : strcontains(k, "cloud-build")])
       )
     ])
     error_message = "cloud-deploy-execution y release-promoter solo leen ambos repositorios."
