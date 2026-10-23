@@ -153,56 +153,70 @@ El estado local es desechable y se excluye de Git. Este ambiente prueba composic
 
 ## Arquitectura en GCP
 
+Así quedó aplicada en octubre de 2026. Cada raíz Terraform administra un bloque. El plano operativo, marcado en el diagrama, es el que `sportapp-gcp.ps1 down` destruye y `up` vuelve a crear.
+
 ```mermaid
 flowchart TB
-    GH[GitHub<br/>CI sin identidad GCP]
-    OP[Operador autorizado<br/>ADC e impersonación]
-    CB[Cloud Build<br/>cuentas internas]
-    CD[Cloud Deploy<br/>aprobación obligatoria]
-    TF[Terraform del ambiente]
-    STATE[(Estado GCS separado<br/>proyecto de gestión)]
+    GH["GitHub<br/>CI y tags, sin identidad GCP"]
+    OP["Operador<br/>ADC e impersonación de tf-apply"]
 
-    subgraph GCP[Proyecto GCP del ambiente]
-      NET[VPC]
-      AR[Artifact Registry]
-      RUN[Cloud Run]
-      GKE[GKE]
-      subgraph SQL[Cloud SQL: una instancia regional HA, un usuario por dominio]
-        uw[(usuarios_write)]
-        ur[(usuarios_read)]
-        af[(afiliacion)]
-        sv[(servicios)]
-        tw[(entrenamientos_write)]
-        tr[(entrenamientos_read)]
-        ew[(eventos_write)]
-        er[(eventos_read)]
-      end
-      PS[Pub/Sub]
-      SM[Secret Manager]
-      OBS[Logging y Monitoring]
+    subgraph MGMT["Proyecto de gestión · bootstrap y delivery"]
+      STATE[("Estado GCS versionado<br/>una ruta por raíz")]
+      CB["Cloud Build<br/>release-backend · release-frontend · promote-release"]
+      EVI[("Evidencia de releases")]
+      CD["Cloud Deploy<br/>backend-gke · bff-web · bff-mobile · frontend-web<br/>aprobación obligatoria"]
     end
 
-    GH -. conexión de lectura .-> CB
-    OP --> TF
-    TF <--> STATE
-    TF --> NET
-    TF --> AR
-    TF --> CB
-    TF --> CD
-    TF --> RUN
-    TF --> GKE
-    TF --> SQL
-    TF --> PS
-    TF --> SM
-    TF --> OBS
+    subgraph PROD["Proyecto de producción · production y production-workloads"]
+      AR["Artifact Registry<br/>sportapp-backend · sportapp-frontend"]
+      SM[Secret Manager]
+      PS["Pub/Sub · tópico, proyector y DLQ por dominio"]
+      OBS[Logging y Monitoring]
+      subgraph NET["VPC sportapp-prod-vpc · subred GKE, subred serverless, Cloud NAT"]
+        subgraph OPER["Plano operativo"]
+          RUN["Cloud Run<br/>web · bff-web · bff-mobile"]
+          subgraph GKE["GKE regional · namespace sportapp"]
+            BASE["Base Terraform<br/>KSA, Secrets, ConfigMap, Services, RBAC"]
+            ILB["Services LoadBalancer internos<br/>IP fija por API"]
+            CARGAS["Deployments y Jobs<br/>(Cloud Deploy)"]
+          end
+          subgraph SQL["Cloud SQL · una instancia regional HA · IP privada"]
+            uw[(usuarios_write)]
+            ur[(usuarios_read)]
+            af[(afiliacion)]
+            sv[(servicios)]
+            tw[(entrenamientos_write)]
+            tr[(entrenamientos_read)]
+            ew[(eventos_write)]
+            er[(eventos_read)]
+          end
+        end
+      end
+    end
+
+    GH -. conexión iniciada desde GCP .-> CB
+    OP --> STATE
     CB --> AR
-    AR --> CD
+    CB --> EVI
+    EVI --> CD
+    CD --> CARGAS
     CD --> RUN
-    CD --> GKE
+    RUN -- egreso VPC directo --> ILB --> CARGAS
+    CARGAS -. cada dominio solo su base .-> SQL
+    CARGAS <--> PS
+    SM -. copiados por Terraform .-> BASE
+    AR -. imágenes por digest .-> CARGAS
     AR -. imágenes por digest .-> RUN
-    AR -. imágenes por digest .-> GKE
-    GKE -. cada dominio solo su base .-> SQL
 ```
+
+| Raíz | Proyecto | Administra |
+| --- | --- | --- |
+| `bootstrap/gcp-state` | gestión | buckets de estado, `tf-plan`/`tf-apply` (solo operadores), identidades de build, promoción y ejecución, y presupuesto |
+| `production` | producción | APIs, VPC, NAT, GKE, Cloud SQL, Pub/Sub, Artifact Registry, Secret Manager, Cloud Run base, IP internas, observabilidad y permisos cruzados |
+| `production-workloads` | producción | namespace, KSA con Workload Identity, Secrets, ConfigMap `sportapp-runtime`, Services y el `Role` de Cloud Deploy; nunca Deployments ni Jobs |
+| `delivery` | gestión | conexión de Cloud Build con GitHub, triggers, buckets de evidencia y de Cloud Deploy, pipelines, targets y aprobadores |
+
+Los BFF de Cloud Run no pasan por un API Gateway. Llegan a cada API por su balanceador interno de IP fija, a través de la VPC. La capa de borde pública (dominio, TLS gestionado y protección perimetral) sigue pendiente.
 
 ### Bases de datos: lógicas por dominio, una instancia física
 
@@ -248,12 +262,13 @@ flowchart LR
 
 ## Encendido, apagado y control de costos
 
-«Apagar» tiene dos modos operativos:
+«Apagar» tiene tres modos operativos:
 
 | Modo | Cuándo usarlo | Qué ocurre |
 | --- | --- | --- |
 | `suspend` | pausa corta | Cloud Run usa mínimo `0`, GKE reduce nodos y Cloud SQL se detiene; pueden continuar cobros de almacenamiento, IP, balanceadores, control plane, imágenes y logs |
-| `destroy` | ambiente no productivo recreable | se revisa `terraform plan -destroy` y se eliminan los recursos administrados por la raíz del ambiente |
+| `sportapp-gcp.ps1 down` / `up` | días o semanas sin uso | `down` destruye solo el plano operativo (GKE, Cloud SQL con sus datos y Cloud Run) con un destroy dirigido. Antes retira los Services de GKE para liberar los balanceadores, y se detiene si el plan alcanzara Artifact Registry u otro recurso del plano fijo. `up` lo recrea y reconcilia `production-workloads` y `delivery` ([uso del script](../scripts/sportapp-gcp.md)) |
+| `destroy` completo | retirar el ambiente | se revisa `terraform plan -destroy` de `production` y se eliminan todos sus recursos, incluidas imágenes y secretos ([preparación de GCP, 15.3](preparacion-terraform-gcp.md#153-destruir-solamente-el-plano-operativo)) |
 
 Desarrollo no genera costos en GCP: se crea y destruye en Docker Desktop con `terraform apply` y `terraform destroy`. `staging`, cuando exista, se destruirá después del ensayo y de conservar la evidencia necesaria. Producción nunca se incluye en una destrucción programada.
 
@@ -275,7 +290,20 @@ La decisión y la arquitectura están aprobadas. Desde el 2026-10-10, `infra/ter
 
 Antes del primer `apply`, complete la guía correspondiente: [preparación local](preparacion-terraform-local.md) para activar kubeadm o [preparación de GCP](preparacion-terraform-gcp.md) para proyectos, estado, identidades internas, Cloud Build y Cloud Deploy sin autenticación GCP desde GitHub.
 
-La raíz `local` se aplicó en Docker Desktop y se verificó con un registro de usuario de punta a punta (BFF, servicio, PostgreSQL, outbox y Pub/Sub). Desde el 2026-10-18 existen también `production-workloads` (base Kubernetes), `delivery` (Cloud Build y Cloud Deploy con aprobación) y la configuración de entrega en `deploy/clouddeploy`; el bootstrap ya no crea WIF para GitHub. Todo se verificó con `terraform validate`, `terraform test` con proveedores simulados y pruebas de scripts, pero todavía no se ha aplicado en GCP. Siguen pendientes `staging` y la decisión de la capa de borde.
+La raíz `local` se aplicó en Docker Desktop y se verificó con un registro de usuario de punta a punta (BFF, servicio, PostgreSQL, outbox y Pub/Sub). Desde el 2026-10-18 existen también `production-workloads` (base Kubernetes), `delivery` (Cloud Build y Cloud Deploy con aprobación) y la configuración de entrega en `deploy/clouddeploy`. El bootstrap ya no crea WIF para GitHub.
+
+En octubre de 2026 se aplicaron en GCP el bootstrap, `production`, `production-workloads` y `delivery` con [`scripts/sportapp-gcp.ps1`](../scripts/sportapp-gcp.md). Las primeras releases de backend y frontend (`v0.2.0`) se construyeron en Cloud Build y se promovieron a Cloud Deploy. Ese primer ciclo corrigió:
+
+- permisos de las cuentas de build, promoción y ejecución;
+- el namespace de los manifiestos de GKE;
+- el render de los BFF;
+- la dependencia de Artifact Registry respecto de GKE en `down`.
+
+Siguen pendientes:
+
+- la evidencia completa de un rollout con smoke y de un rollback;
+- `staging`;
+- la capa de borde.
 
 Propiedad: Terraform administra infraestructura, identidades, configuración compartida, Services, RBAC, pipelines y targets; Cloud Deploy administra imágenes, revisiones, tráfico, Deployments y Jobs. Ningún campo tiene dos dueños ([preparación de GCP, sección 6.4](preparacion-terraform-gcp.md#64-separar-propiedad-terraformcloud-deploy)).
 
