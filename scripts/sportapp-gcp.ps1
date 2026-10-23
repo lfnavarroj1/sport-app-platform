@@ -1129,7 +1129,9 @@ function Invoke-Down($Cfg) {
     $clusters = (Invoke-Capture gcloud @('container', 'clusters', 'list', "--project=$($Cfg.production)", '--format=value(name)', '--quiet') -AllowFailure).Output -split "`n"
     if ($clusters -contains $ClusterName) {
         Initialize-Root 'workloads'
-        [void](Invoke-TerraformStep -Key workloads -Name 'workloads-destroy' -Purpose 'Retirar la base Kubernetes (libera los balanceadores internos)' -Destroy -DeletablePatterns @('.'))
+        # Solo los Services: los Secrets tienen prevent_destroy y el resto desaparece con
+        # el clúster; production-workloads conserva su estado y up recrea lo que falte.
+        [void](Invoke-TerraformStep -Key workloads -Name 'workloads-destroy' -Purpose 'Retirar los Services de GKE (libera los balanceadores internos)' -Destroy -PlanArgs @('-target=kustomization_resource.services') -DeletablePatterns @('^kustomization_resource\.services\['))
         Write-Step 'Esperando que GKE libere los balanceadores internos'
         for ($i = 0; $i -lt 30; $i++) {
             $rules = (Invoke-Capture gcloud @('compute', 'forwarding-rules', 'list', "--project=$($Cfg.production)", '--filter=description~kubernetes.io/service-name', '--format=value(name)', '--quiet') -AllowFailure).Output
