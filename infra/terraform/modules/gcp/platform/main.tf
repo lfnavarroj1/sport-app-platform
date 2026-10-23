@@ -133,11 +133,23 @@ locals {
   }
 
   # Imágenes publicadas por cada cuenta de Cloud Build (allowlist de entrega).
-  artifact_repositories = {
+  # Los repositorios no dependen de GKE: este mapa (for_each del módulo) es fijo
+  # y solo los lectores incluyen la cuenta de los nodos. Si el for_each dependiera
+  # de GKE, destruir el clúster (sportapp-gcp.ps1 down) arrastraría los
+  # repositorios y sus imágenes.
+  artifact_repository_ids = {
     backend = {
       repository_id = "sportapp-backend"
       description   = "Imágenes OCI del backend (APIs, workers y BFF); solo escribe cloud-build-backend"
-      writers       = { cloud-build-backend = "serviceAccount:${var.delivery_identities.build_backend}" }
+    }
+    frontend = {
+      repository_id = "sportapp-frontend"
+      description   = "Imagen OCI de la aplicación web; solo escribe cloud-build-frontend"
+    }
+  }
+  artifact_repositories = {
+    backend = {
+      writers = { cloud-build-backend = "serviceAccount:${var.delivery_identities.build_backend}" }
       readers = {
         gke-nodes        = module.gke.node_service_account_member
         deploy-execution = "serviceAccount:${var.delivery_identities.deploy_execution}"
@@ -145,9 +157,7 @@ locals {
       }
     }
     frontend = {
-      repository_id = "sportapp-frontend"
-      description   = "Imagen OCI de la aplicación web; solo escribe cloud-build-frontend"
-      writers       = { cloud-build-frontend = "serviceAccount:${var.delivery_identities.build_frontend}" }
+      writers = { cloud-build-frontend = "serviceAccount:${var.delivery_identities.build_frontend}" }
       readers = {
         deploy-execution = "serviceAccount:${var.delivery_identities.deploy_execution}"
         release-promoter = "serviceAccount:${var.delivery_identities.release_promoter}"
@@ -262,7 +272,7 @@ module "iam" {
 # suyo y las identidades de ejecución y promoción solo leen.
 module "artifact_registry" {
   source   = "../artifact-registry"
-  for_each = local.artifact_repositories
+  for_each = local.artifact_repository_ids
 
   project_id                 = var.project_id
   region                     = var.region
@@ -272,8 +282,8 @@ module "artifact_registry" {
   keep_recent_versions       = var.artifact_registry.keep_recent_versions
   delete_untagged_after_days = var.artifact_registry.delete_untagged_after_days
   cleanup_dry_run            = var.artifact_registry.cleanup_dry_run
-  reader_members             = each.value.readers
-  writer_members             = each.value.writers
+  reader_members             = local.artifact_repositories[each.key].readers
+  writer_members             = local.artifact_repositories[each.key].writers
 
   depends_on = [module.project_services]
 }
