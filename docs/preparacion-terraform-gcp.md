@@ -887,8 +887,10 @@ Estado de la validación de origen:
 
 Ubicación exacta:
 
-- backend: [`backend/cloudbuild.release.yaml`](../../backend/cloudbuild.release.yaml); la implementación está en [`backend/scripts/release.py`](../../backend/scripts/release.py);
-- frontend: [`frontend/cloudbuild.release.yaml`](../../frontend/cloudbuild.release.yaml); cada etapa llama a [`frontend/deploy/release/cloudbuild-release.sh`](../../frontend/deploy/release/cloudbuild-release.sh) y el manifiesto se genera con [`release-manifest.mjs`](../../frontend/deploy/release/release-manifest.mjs).
+- backend: `cloudbuild.release.yaml` en la raíz de su repositorio; la implementación está en `scripts/release.py`;
+- frontend: `cloudbuild.release.yaml` en la raíz de su repositorio; cada etapa llama a `deploy/release/cloudbuild-release.sh` y el manifiesto se genera con `deploy/release/release-manifest.mjs`.
+
+Son rutas de otros repositorios: van sin enlace porque la validación de este repositorio solo dispone de `platform`.
 
 Correspondencia entre el requisito y los pasos reales:
 
