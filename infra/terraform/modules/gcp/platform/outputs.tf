@@ -37,8 +37,8 @@ output "cloud_run_deploy_config" {
       max_instances   = var.cloud_run.max_instances
       concurrency     = var.cloud_run.concurrency
       timeout_seconds = var.cloud_run.timeout_seconds
-      vpc_network     = local.cloud_run_services[name].vpc ? element(split("/", module.network.network_id), length(split("/", module.network.network_id)) - 1) : null
-      vpc_subnetwork  = local.cloud_run_services[name].vpc ? element(split("/", module.network.serverless_subnetwork_id), length(split("/", module.network.serverless_subnetwork_id)) - 1) : null
+      vpc_network     = local.cloud_run_services[name].vpc ? local.cloud_run_vpc_network : null
+      vpc_subnetwork  = local.cloud_run_services[name].vpc ? local.cloud_run_vpc_subnetwork : null
       env             = local.cloud_run_env_effective[name]
       secret_env      = lookup(var.cloud_run_secret_env, name, {})
       uri             = m.uri

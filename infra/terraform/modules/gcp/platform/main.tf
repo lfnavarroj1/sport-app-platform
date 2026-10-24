@@ -147,26 +147,34 @@ locals {
       description   = "Imagen OCI de la aplicación web; solo escribe cloud-build-frontend"
     }
   }
-  artifact_repositories = {
+  # Escritores y lectores van en locals separados: Terraform trata cada local
+  # como un único nodo del grafo, así que si compartieran uno, los escritores
+  # heredarían la dependencia de GKE de los lectores y down los destruiría.
+  artifact_repository_writers = {
+    backend  = { cloud-build-backend = "serviceAccount:${var.delivery_identities.build_backend}" }
+    frontend = { cloud-build-frontend = "serviceAccount:${var.delivery_identities.build_frontend}" }
+  }
+  artifact_repository_readers = {
     backend = {
-      writers = { cloud-build-backend = "serviceAccount:${var.delivery_identities.build_backend}" }
-      readers = {
-        gke-nodes        = module.gke.node_service_account_member
-        deploy-execution = "serviceAccount:${var.delivery_identities.deploy_execution}"
-        release-promoter = "serviceAccount:${var.delivery_identities.release_promoter}"
-      }
+      gke-nodes        = module.gke.node_service_account_member
+      deploy-execution = "serviceAccount:${var.delivery_identities.deploy_execution}"
+      release-promoter = "serviceAccount:${var.delivery_identities.release_promoter}"
     }
     frontend = {
-      writers = { cloud-build-frontend = "serviceAccount:${var.delivery_identities.build_frontend}" }
-      readers = {
-        deploy-execution = "serviceAccount:${var.delivery_identities.deploy_execution}"
-        release-promoter = "serviceAccount:${var.delivery_identities.release_promoter}"
-      }
+      deploy-execution = "serviceAccount:${var.delivery_identities.deploy_execution}"
+      release-promoter = "serviceAccount:${var.delivery_identities.release_promoter}"
     }
   }
 
   # Repositorio de cada servicio de Cloud Run.
   cloud_run_repository = { web = "frontend", bff-web = "backend", bff-mobile = "backend" }
+
+  # Red de Cloud Run por nombre corto, como la escriben las plantillas de Cloud
+  # Deploy. Con la ruta completa Terraform vería un cambio en la plantilla, y un
+  # cambio de plantilla con el nombre de revisión fijado por Cloud Deploy falla
+  # con 409 (la revisión ya existe con otra configuración).
+  cloud_run_vpc_network    = module.network.network_name
+  cloud_run_vpc_subnetwork = element(split("/", module.network.serverless_subnetwork_id), length(split("/", module.network.serverless_subnetwork_id)) - 1)
 
   service_accounts = merge(
     {
@@ -282,8 +290,8 @@ module "artifact_registry" {
   keep_recent_versions       = var.artifact_registry.keep_recent_versions
   delete_untagged_after_days = var.artifact_registry.delete_untagged_after_days
   cleanup_dry_run            = var.artifact_registry.cleanup_dry_run
-  reader_members             = local.artifact_repositories[each.key].readers
-  writer_members             = local.artifact_repositories[each.key].writers
+  reader_members             = local.artifact_repository_readers[each.key]
+  writer_members             = local.artifact_repository_writers[each.key]
 
   depends_on = [module.project_services]
 }
@@ -485,8 +493,8 @@ module "cloud_run" {
   deployer_members      = { deploy-execution = "serviceAccount:${var.delivery_identities.deploy_execution}" }
 
   binary_authorization_enabled = var.binary_authorization.enabled
-  vpc_network                  = each.value.vpc ? module.network.network_id : null
-  vpc_subnetwork               = each.value.vpc ? module.network.serverless_subnetwork_id : null
+  vpc_network                  = each.value.vpc ? local.cloud_run_vpc_network : null
+  vpc_subnetwork               = each.value.vpc ? local.cloud_run_vpc_subnetwork : null
   startup_probe_path           = each.value.startup_probe_path
   liveness_probe_path          = each.value.liveness_probe_path
   deletion_protection          = var.deletion_protection
