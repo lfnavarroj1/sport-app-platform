@@ -1,12 +1,14 @@
-﻿# Funciones compartidas por sportapp-release.ps1 (backend y frontend) y
-# sportapp-release-movil.ps1 (móvil). Se carga con dot-sourcing desde esos
-# scripts, que definen antes sus parámetros, $PlatformRoot, $ConfigFile,
-# $ReleaseScriptName y $Repos; no se ejecuta solo.
+﻿# Funciones compartidas por sportapp-release.ps1 (backend y frontend),
+# sportapp-release-movil.ps1 (móvil) y sportapp-release-plataforma.ps1
+# (plataforma). Se carga con dot-sourcing desde esos scripts, que definen antes
+# sus parámetros, $PlatformRoot, $ConfigFile, $ReleaseScriptName y $Repos; no se
+# ejecuta solo.
 
 $Components = [ordered]@{
     backend  = @{ Repo = 'sport-app-backend'; Label = 'Backend'; Workflow = 'release-validation.yml'; Trigger = 'release-backend' }
     frontend = @{ Repo = 'sport-app-frontend'; Label = 'Frontend web'; Workflow = 'release-web.yml'; Trigger = 'release-frontend' }
     mobile   = @{ Repo = 'sport-app-movil'; Label = 'Móvil'; Workflow = 'release-mobile.yml' }
+    platform = @{ Repo = 'sport-app-platform'; Label = 'Plataforma'; Workflow = 'validate-platform.yml' }
 }
 $SemVerPattern = '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$'
 $PollSeconds = 30
@@ -444,10 +446,12 @@ function Sync-Platform($Entries) {
     if (-not $tags.Count) { return }
     $paths = @($Submodules.Values) + 'release-manifest.yaml'
     Invoke-Show git (@('-C', $PlatformRoot, 'status', '--short', '--') + $paths)
-    Write-Info 'Confirma estos cambios en una rama de la plataforma (solo estos archivos):'
+    Write-Info 'Confirma estos cambios en una rama de la plataforma (solo estos archivos) y abre su PR hacia develop:'
     Write-Info "  git switch -c chore/componentes-$((Get-Date).ToString('yyyyMMdd'))"
     Write-Info "  git add $($paths -join ' ')"
     Write-Info "  git commit -m `"chore(platform): fijar componentes en $($tags -join ', ')`""
+    Write-Info '  git push --no-recurse-submodules -u origin HEAD'
+    Write-Info 'La release de plataforma (sportapp-release-plataforma.ps1) toma esta combinación desde develop.'
     if ($tags -match '^backend ') {
         Write-Info 'Si cambiaron los Services del backend, reconcilia GKE con: .\scripts\sportapp-gcp.ps1 up'
     }
