@@ -14,7 +14,7 @@ El script usa tu sesión de GitHub CLI y, para seguir Cloud Build, tu `gcloud` e
 
 Cada tag que crea también inicia en GCP, si están habilitados, los triggers de Cloud Build `release-backend` y `release-frontend`. El despliegue posterior se hace con [`sportapp-gcp.ps1 promote`](sportapp-gcp.md#6-desplegar-una-release).
 
-La **aplicación móvil** se publica aparte con [`sportapp-release-movil.ps1`](sportapp-release-movil.md): no tiene imagen ni pasa por Cloud Build o Cloud Deploy, así que no influye en los despliegues. Los dos scripts comparten el código común en [`sportapp-release-common.ps1`](sportapp-release-common.ps1).
+La **aplicación móvil** se publica aparte con [`sportapp-release-movil.ps1`](sportapp-release-movil.md): no tiene imagen ni pasa por Cloud Build o Cloud Deploy, así que no influye en los despliegues. La **versión de plataforma**, que fija la combinación aceptada en el sprint, se publica después con [`sportapp-release-plataforma.ps1`](sportapp-release-plataforma.md). Los tres scripts comparten el código común en [`sportapp-release-common.ps1`](sportapp-release-common.ps1).
 
 ## Contenido
 
@@ -141,16 +141,16 @@ En la fase 7, por cada versión validada y con imágenes publicadas, el script h
 1. Descarga el submódulo si falta. `.gitmodules` declara `update = none`, por eso usa `--checkout`; también activa las rutas largas de Windows.
 2. Lo mueve al tag publicado. Si el submódulo tiene cambios locales, no lo mueve, para no perderlos, y te avisa.
 3. Actualiza `version`, `ref` y `commit` del componente en `release-manifest.yaml`.
-4. Muestra `git status` de esos archivos y los comandos para confirmarlos en una rama. **El script no hace commit:** lo haces tú.
+4. Muestra `git status` de esos archivos y los comandos para confirmarlos en una rama con PR hacia `develop` de la plataforma. **El script no hace commit:** lo haces tú.
 5. Si se publicó el backend, recuerda ejecutar `sportapp-gcp.ps1 up` para reconciliar los Services de GKE.
 
-El manifiesto sigue en `status: draft`. Faltan los datos que solo existen después de Cloud Build y del promotor:
+El manifiesto sigue en `status: draft`. Faltan los datos que solo existen después de Cloud Build:
 
 - los digests;
 - `contractVersion` y `expectedBffContract`;
 - la evidencia.
 
-Se completan antes de publicar la versión de plataforma.
+Los completa y valida la [release de plataforma](sportapp-release-plataforma.md#6-qué-se-valida-y-qué-queda-en-el-manifiesto), a partir de la evidencia de cada tag.
 
 Para hacerlo por separado, por ejemplo si usaste `-SkipPlatform` o publicaste una release a mano, usa el comando `submodules`:
 

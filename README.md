@@ -98,12 +98,17 @@ flowchart LR
 8. **Crear las ramas de release.** Cuando `develop` esté verde y el alcance esté completo, crear `release/vX.Y.Z` desde `develop` en cada repositorio que deba publicar una versión. Cada componente conserva su propia versión; `sport-app-platform` asigna la versión de la composición completa.
 9. **Congelar y estabilizar.** En `release/*` no entran funcionalidades nuevas. Solo se admiten correcciones, cambios de versión, evidencia, migraciones y configuración indispensables para liberar.
 10. **Publicar los componentes.** Versionar primero los componentes afectados y construir cada artefacto una sola vez. Las imágenes se identifican por digest y los paquetes por checksum.
-11. **Cerrar la composición de plataforma.** En la rama de release de `sport-app-platform`, actualizar en el mismo PR los punteros `components/*` y [`release-manifest.yaml`](release-manifest.yaml). El commit declarado para cada componente debe coincidir con su submódulo.
+11. **Cerrar la composición de plataforma.** En `develop` de `sport-app-platform`, actualizar en el mismo PR los punteros `components/*` y [`release-manifest.yaml`](release-manifest.yaml) a los tags publicados. Los scripts de release de los componentes preparan esos cambios. El commit declarado para cada componente debe coincidir con su submódulo.
 12. **Validar el candidato.** Completar versiones, tags, contratos y artefactos; ejecutar contratos, integración, E2E, seguridad y smoke. El manifiesto cambia de `draft` a `released` únicamente cuando cumple el [JSON Schema](schemas/release-manifest.schema.json). En el mismo PR se crea la copia inmutable `releases/vX.Y.Z.yaml`.
 13. **Integrar y sincronizar.** Fusionar la release en `main` mediante PR. Toda corrección hecha durante la estabilización también debe regresar mediante PR a `develop`, para que el siguiente sprint no pierda esos cambios.
 14. **Etiquetar y promover.** Crear el tag `vX.Y.Z` sobre el commit de `main` que contiene el manifiesto liberado y su copia inmutable. Promover exactamente los mismos digests y checksums aprobados, sin reconstruir artefactos para producción.
 
 **Punto final:** `main` contiene y etiqueta la composición liberada, mientras `develop` conserva tanto las historias entregadas como las correcciones hechas durante la release. Solo entonces termina el flujo normal.
+
+Los pasos 10 a 14 se ejecutan con los scripts de release desde la estación del operador:
+- [`sportapp-release.ps1`](scripts/sportapp-release.md): backend y frontend;
+- [`sportapp-release-movil.ps1`](scripts/sportapp-release-movil.md): móvil;
+- [`sportapp-release-plataforma.ps1`](scripts/sportapp-release-plataforma.md): versión de plataforma, con `release/vX.Y.Z`, manifiesto `released`, tag y retorno a `develop`.
 
 Ejemplo de los pasos 2 y 3 cuando una misma historia afecta varios repositorios:
 
@@ -138,6 +143,7 @@ La especificación operativa ampliada está en el [manual de versionado](docs/ma
 - El [GitHub Project SportApp Platform](https://github.com/users/lfnavarroj1/projects/4) administra el backlog vigente, los sprints, estados, responsables y evidencia: 40 HU (HU001–HU040), 100 PHU y 100 puntos de valor. Cada HU se construye con tareas técnicas `T-HUxxx-BE`/`WEB`/`MOB`/`PLAT` creadas justo a tiempo, sin PHU ni valor propios; solo una HU aceptada suma velocidad y valor ([reglas](project/README.md#historias-y-tareas-técnicas)).
 - El [manual de versiones](docs/manual-versionado.md) define la relación entre sprint, HU, ramas, versiones y releases.
 - El [esquema de CI y release](docs/esquema-ci-y-release.md) explica qué ocurre con cada push y cómo se libera una composición compatible.
+- Las releases se publican con [`sportapp-release.ps1`](scripts/sportapp-release.md) (backend y frontend), [`sportapp-release-movil.ps1`](scripts/sportapp-release-movil.md) (móvil) y [`sportapp-release-plataforma.ps1`](scripts/sportapp-release-plataforma.md) (versión de plataforma).
 - La preparación está separada por plataforma: la [guía local](docs/preparacion-terraform-local.md) deja listo Kubernetes kubeadm de Docker Desktop y la [guía de GCP](docs/preparacion-terraform-gcp.md) configura proyectos, Terraform manual, Cloud Build interno y Cloud Deploy con aprobación, sin entregar identidad GCP a GitHub.
 - La [guía de Terraform](infra/terraform/README.md) explica paso a paso el desarrollo local, la producción en GCP y la actualización de backend y frontend.
 - La [arquitectura Terraform](docs/arquitectura-terraform.md) define su ubicación, clonación, frontera con los componentes, pruebas en local/GCP y ciclo de encendido, suspensión y destrucción para controlar costos.

@@ -89,7 +89,7 @@ Las fases de PR, pruebas, aprobación, release y validación son las mismas de [
 Después:
 
 1. **APK:** si `release-mobile` terminó bien, compila y adjunta el APK (sección 5).
-2. **Plataforma:** mueve `components/mobile` al tag y actualiza en `release-manifest.yaml` su `version`, `ref`, `commit`, `versionCode` y el `sha256` del APK. No hace commit: muestra los comandos para que lo confirmes en una rama.
+2. **Plataforma:** mueve `components/mobile` al tag y actualiza en `release-manifest.yaml` su `version`, `ref`, `commit`, `versionCode` y el `sha256` del APK. No hace commit: muestra los comandos para que lo confirmes en una rama con PR hacia `develop` de la plataforma. La [release de plataforma](sportapp-release-plataforma.md) toma esa combinación desde `develop`.
 
 Si algo falla, corrige y vuelve a ejecutar `release`: el PR abierto se reutiliza.
 

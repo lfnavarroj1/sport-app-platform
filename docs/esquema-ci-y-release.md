@@ -51,21 +51,28 @@ Un push de una rama de trabajo nunca fusiona ni despliega por sí mismo.
 
 ## Cómo lanzar una release completa
 
-Antes de iniciar, backend y frontend deben tener tags y artefactos publicados. Luego se ejecuta en `sport-app-platform` el workflow objetivo `prepare-platform-release.yml` con la versión de plataforma y las referencias de los componentes:
+Se hace desde la estación del operador, en este orden:
+
+1. publicar los componentes que cambiaron: [`sportapp-release.ps1`](../scripts/sportapp-release.md) (backend y frontend, con imágenes por digest) y [`sportapp-release-movil.ps1`](../scripts/sportapp-release-movil.md) (APK con checksum);
+2. fusionar en `develop` de la plataforma el PR que mueve los submódulos y `release-manifest.yaml` a esos tags;
+3. aceptar las HU en la revisión del sprint;
+4. publicar la versión de plataforma:
 
 ```powershell
-gh workflow run prepare-platform-release.yml --repo lfnavarroj1/sport-app-platform --ref main -f platform_version=0.1.0 -f backend_ref=v0.2.0 -f frontend_ref=v0.1.0 -f mobile_ref=v0.1.0
+.\scripts\sportapp-release-plataforma.ps1 release -Stories HU001,HU010
 ```
 
-Este comando funcionará cuando el workflow sea implementado. Su ejecución debe:
+[`sportapp-release-plataforma.ps1`](../scripts/sportapp-release-plataforma.md) hace lo siguiente:
 
-1. comprobar que los tags existen y obtener sus commits;
-2. recuperar los descriptores y artefactos publicados;
-3. actualizar los submódulos y `release-manifest.yaml`;
-4. crear `release/v0.1.0` y un PR, sin desplegar producción;
-5. ejecutar contratos, integración local, E2E y seguridad; incorporar staging cuando sea definido;
-6. permitir aprobación y creación del tag de plataforma;
-7. promover a producción los mismos digests mediante un ambiente protegido.
+1. crea `release/vX.Y.Z` desde `develop`;
+2. comprueba que cada tag sea el commit de su submódulo;
+3. valida la evidencia de Cloud Build con el código del promotor y la compatibilidad de contratos;
+4. escribe el manifiesto `released` y `releases/vX.Y.Z.yaml`;
+5. abre el PR hacia `main`, con `validate-platform` y la aprobación humana;
+6. crea el tag y la GitHub Release con las notas;
+7. devuelve el manifiesto a `develop` en `draft`, con la versión siguiente.
+
+No despliega: la promoción a producción sigue siendo [`sportapp-gcp.ps1 promote`](../scripts/sportapp-gcp.md#6-desplegar-una-release), con aprobación en Cloud Deploy. Las pruebas integradas y E2E de la composición se ejecutan antes, en la revisión del sprint; automatizarlas en el PR de release sigue pendiente (`test-platform-release.yml`).
 
 ## Manifiesto de composición
 
@@ -126,7 +133,7 @@ Contrato:   v1.0.0 · compatible
 | Backend | `ci.yml`, `release-backend.yml` (`deliver-development.yml` debe retirarse o transformarse) |
 | Frontend | `ci-web.yml`, `release-web.yml` (no se crea entrega automática de development) |
 | Móvil | `ci-mobile.yml`, `release-mobile.yml` |
-| Plataforma | `validate-platform.yml` (implementado: Markdown, YAML, JSON, scripts y Terraform con mocks); `prepare-platform-release.yml` y `test-platform-release.yml` (pendientes). La promoción y el rollback **no** son workflows de GitHub: son el trigger interno `promote-release` y Cloud Deploy con aprobación ([preparación de GCP, secciones 10 a 14](preparacion-terraform-gcp.md#10-configurar-construcción-y-publicación)) |
+| Plataforma | `validate-platform.yml` (implementado: Markdown, YAML, JSON, scripts, copias de `releases/` y Terraform con mocks); `test-platform-release.yml` (pendiente). La preparación de la release no es un workflow: la hace el operador con [`sportapp-release-plataforma.ps1`](../scripts/sportapp-release-plataforma.md). La promoción y el rollback **no** son workflows de GitHub: son el trigger interno `promote-release` y Cloud Deploy con aprobación ([preparación de GCP, secciones 10 a 14](preparacion-terraform-gcp.md#10-configurar-construcción-y-publicación)) |
 
 ## Condiciones previas de activación
 

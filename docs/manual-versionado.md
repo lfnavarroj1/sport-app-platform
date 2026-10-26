@@ -185,6 +185,8 @@ Una HU suma velocidad únicamente al llegar a `Aceptada`. Código parcial, PR ab
 9. copiar el manifiesto a `releases/vX.Y.Z.yaml`;
 10. publicar notas de release y actualizar Project y wiki.
 
+Los pasos 3 y 4 los automatizan [`sportapp-release.ps1`](../scripts/sportapp-release.md) y [`sportapp-release-movil.ps1`](../scripts/sportapp-release-movil.md). Los pasos 5, 8 y 9 y las notas del paso 10 los hace [`sportapp-release-plataforma.ps1`](../scripts/sportapp-release-plataforma.md) a partir de `develop`, después de la aceptación del paso 7.
+
 ## Manifiesto de la versión
 
 Cada versión de plataforma registra como mínimo:
@@ -290,7 +292,7 @@ Cada release de plataforma debe listar:
 | Proponer incremento del componente | equipo propietario del repositorio |
 | Verificar compatibilidad integrada | responsables de `sport-app-platform` |
 | Aprobar versión de sprint | responsable de producto y responsable técnico |
-| Crear tag y notas | workflow autorizado de release |
+| Crear tag y notas | operador con los scripts de release (`scripts/sportapp-release*.ps1`), siempre después de la aprobación humana del PR |
 | Construir y publicar por digest | Cloud Build en GCP, con la cuenta del componente (`release-backend`, `release-frontend`) |
 | Crear releases de Cloud Deploy | operador mediante el trigger interno `promote-release` (cuenta `release-promoter`) |
 | Aprobar el rollout productivo | aprobadores humanos (`approvers`); nunca una automatización |

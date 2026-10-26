@@ -2,9 +2,9 @@
 # Composición candidata de SportApp.
 #
 # `draft` permite registrar los commits fijados por los submódulos antes de
-# que existan releases y artefactos publicados. Una PR de release debe completar
-# todos los campos, cambiar el estado a `released` y copiar este archivo a
-# releases/vX.Y.Z.yaml.
+# que existan releases y artefactos publicados. La release de plataforma
+# (scripts/sportapp-release-plataforma.ps1) completa todos los campos, cambia el
+# estado a `released` y copia este archivo a releases/vX.Y.Z.yaml.
 schemaVersion: 1
 platformVersion: "0.1.0"
 status: draft
