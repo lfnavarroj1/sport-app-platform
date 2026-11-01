@@ -251,7 +251,7 @@ Un defecto urgente usa:
 hotfix/vX.Y.Z-descripcion
 ```
 
-El componente afectado incrementa `PATCH`. La plataforma también incrementa `PATCH`, actualiza el manifiesto, repite los controles aplicables y reconcilia el cambio con la rama de integración. No se sustituye un digest bajo una etiqueta existente.
+El componente afectado incrementa `PATCH`. En backend, frontend y móvil lo publica el comando `hotfix` de [`sportapp-release.ps1`](../scripts/sportapp-release.md#hotfix), que usa la rama `hotfix/vX.Y.Z[-descripcion]` y abre el retorno a `develop`. La plataforma también incrementa `PATCH`, actualiza el manifiesto, repite los controles aplicables y reconcilia el cambio con la rama de integración. No se sustituye un digest bajo una etiqueta existente.
 
 ## Campos requeridos en GitHub Projects
 

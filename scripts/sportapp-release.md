@@ -1,12 +1,24 @@
 # Uso de `sportapp-release.ps1`
 
-[`sportapp-release.ps1`](sportapp-release.ps1) publica todas las releases de SportApp desde la estación del operador. Es un solo script: al ejecutarlo pregunta qué se va a publicar.
+[`sportapp-release.ps1`](sportapp-release.ps1) publica todas las releases de SportApp desde la estación del operador. Es un solo script: al ejecutarlo pregunta qué hacer y, para publicar, qué se publica.
 
 ```powershell
 .\scripts\sportapp-release.ps1
 ```
 
 ```text
+==> ¿Qué quieres hacer?
+  1. Publicar una release (backend, frontend, móvil o plataforma)
+  2. Publicar un hotfix desde main (backend, frontend o móvil)
+  3. Ver cambios pendientes, PR abierto y última release
+  4. Consultar o esperar el Cloud Build de un tag
+  5. Compilar, firmar y adjuntar el APK de una release móvil
+  6. Mover components/* a los tags publicados
+  7. Validar gh, permisos, ramas y herramientas
+  8. Preparación única: crear o renombrar ramas main/develop
+  9. Preparación única: crear el almacén de claves del APK
+  10. Ayuda
+
 ==> ¿Qué quieres publicar?
   1. Solo backend
   2. Backend y frontend
@@ -44,15 +56,16 @@ El script usa tu sesión de GitHub CLI y, en modo lectura, tu `gcloud`. No crea 
 .\scripts\sportapp-release.ps1 [comando] [-Target <opción>] [opciones]
 ```
 
-Sin comando, ejecuta `release`. Sin `-Target`, muestra el menú con las opciones que admite el comando; si solo admite una, la toma sin preguntar.
+Sin comando, muestra el menú de comandos; con `-Target` y sin comando, ejecuta `release`. Sin `-Target`, muestra el menú con las opciones que admite el comando; si solo admite una, la toma sin preguntar.
 
 | Comando | Qué hace | Opciones del menú |
 | --- | --- | --- |
 | `release` | publica lo elegido (secciones 5 a 7) | las cinco |
+| `hotfix` | publica una corrección urgente desde `hotfix/vX.Y.Z` hacia `main` y abre su retorno a `develop` ([hotfix](#hotfix)) | backend, frontend y móvil |
 | `check` | valida `gh`, permisos, ramas y las herramientas de lo elegido | las cinco y *Todo* |
 | `status` | cambios pendientes de `develop`, PR abierto, última release y releases cortadas | las cinco y *Todo* |
 | `prepare` | preparación única de las ramas (sección 4) | las cinco |
-| `keystore` | crea el almacén de claves del APK (sección 4) | móvil |
+| `keystore` | crea el almacén de claves del APK (sección 4); `release` y `apk` del móvil también ofrecen crearlo si falta | móvil |
 | `builds` | consulta o espera el Cloud Build de los tags publicados y muestra el error si falló | backend y frontend |
 | `apk` | compila, firma y adjunta el APK de una release existente del móvil | móvil |
 | `submodules` | mueve los submódulos de la plataforma a los tags y actualiza `release-manifest.yaml` | backend, frontend y móvil |
@@ -317,6 +330,21 @@ El token de la cuenta revisora nunca se imprime ni se guarda.
 - **Corrección de una versión de plataforma publicada:** sale de `develop` con `-Bump patch`. El retorno abre la MINOR siguiente.
 
 Cada componente conserva su versión individual. En la primera release, `$initialBackendVersion` y `$initialFrontendVersion` de `.env.ps1` deben coincidir con las versiones publicadas: `sportapp-gcp.ps1 setup` las usa para crear Cloud Run.
+
+### Hotfix
+
+`release` siempre publica desde `develop`. Cuando hay un defecto urgente en `main` y `develop` ya tiene trabajo que no se quiere publicar, se usa `hotfix` (opción *Publicar un hotfix desde main*). Sirve para backend, frontend y móvil:
+
+```powershell
+.\scripts\sportapp-release.ps1 hotfix -Target mobile
+```
+
+1. **Versión y rama:** siempre `PATCH` sobre el último tag (o la de `-MobileVersion` y similares). Usa la rama `hotfix/vX.Y.Z[-descripcion]` si ya existe en GitHub; si no, la crea desde `main` al confirmar el plan.
+2. **Corrección:** si la rama todavía es igual a `main`, el script muestra los comandos para traerla, espera a que subas la corrección y presiones Enter. Con `omitir` deja ese componente fuera.
+3. **Publicación:** PR `hotfix/vX.Y.Z` → `main` y las mismas fases de `release`: pruebas, tu aprobación, tag, workflow, Cloud Build o APK, submódulos y manifiesto.
+4. **Retorno:** al final abre el PR `hotfix/vX.Y.Z` → `develop` del componente. Revísalo y fusiónalo: puede tener conflictos con lo que `develop` avanzó.
+
+Si se corta, repetir el mismo comando retoma: reutiliza la rama y el PR abierto, o sigue desde el tag si el PR ya se fusionó.
 
 ## 10. Submódulos y manifiesto de la plataforma
 
