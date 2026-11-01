@@ -1,32 +1,88 @@
 # yaml-language-server: $schema=schemas/release-manifest.schema.json
-# Composición candidata de SportApp.
-#
-# `draft` permite registrar los commits fijados por los submódulos antes de
-# que existan releases y artefactos publicados. La release de plataforma
-# (opción Plataforma de scripts/sportapp-release.ps1) completa todos los campos, cambia el
-# estado a `released` y copia este archivo a releases/vX.Y.Z.yaml.
+# Composición publicada de SportApp v0.1.0: versiones, commits, digests y
+# evidencia de Cloud Build que validó scripts/sportapp-release.ps1.
 schemaVersion: 1
 platformVersion: "0.1.0"
-status: draft
+status: "released"
 sprint: "Sprint 1"
-acceptedStories: []
+acceptedStories:
+  - "HU001"
+  - "HU002"
+  - "HU003"
+  - "HU004"
+  - "HU005"
+  - "HU006"
+  - "HU007"
+  - "HU008"
+  - "HU009"
+  - "HU010"
+  - "HU011"
+  - "HU012"
+  - "HU013"
+  - "HU014"
+  - "HU015"
+  - "HU016"
+  - "HU017"
+  - "HU018"
+  - "HU019"
+  - "HU020"
+  - "HU021"
+  - "HU022"
+  - "HU023"
+  - "HU024"
+  - "HU025"
+  - "HU026"
+  - "HU027"
+  - "HU028"
+  - "HU029"
+  - "HU030"
+  - "HU031"
+  - "HU032"
+  - "HU033"
+  - "HU034"
+  - "HU035"
+  - "HU036"
+  - "HU037"
+  - "HU038"
+  - "HU039"
+  - "HU040"
+  - "HU041"
+  - "HU042"
+  - "HU043"
 components:
   backend:
-    repository: https://github.com/lfnavarroj1/sport-app-backend
+    repository: "https://github.com/lfnavarroj1/sport-app-backend"
     version: "0.4.0"
     ref: "v0.4.0"
     commit: "1647cf09f6b75d091d44581a729d626dcd139e53"
-    contractVersion: null
-    artifacts: {}
+    contractVersion: "0.34.0"
+    artifacts:
+      affiliation-management: "us-central1-docker.pkg.dev/sportapp-prod-lfnj-2026/sportapp-backend/affiliation-management@sha256:67a8213aa8a14bf68d9a7a0087897067511b201929ba6f1d2d2d9aa65d44394e"
+      bff-mobile: "us-central1-docker.pkg.dev/sportapp-prod-lfnj-2026/sportapp-backend/bff-mobile@sha256:bbc36833f7901b0e2896c86e811dce8b4c579e679d1af7233b575e70d49283c3"
+      bff-web: "us-central1-docker.pkg.dev/sportapp-prod-lfnj-2026/sportapp-backend/bff-web@sha256:4a01d72829f06cff69e1bda8b80725a7a9b4e1dbaf07ccb44e28104d4ada2766"
+      complementary-services: "us-central1-docker.pkg.dev/sportapp-prod-lfnj-2026/sportapp-backend/complementary-services@sha256:b69a71896db1334dbc06716b7c856a128d0874e79eb61f080c13cb86c3b9a4cd"
+      events-management: "us-central1-docker.pkg.dev/sportapp-prod-lfnj-2026/sportapp-backend/events-management@sha256:d4e1237d294c57b75a9c5f20746674350967a848a2166c2e15768e57cad998ae"
+      third-party-management: "us-central1-docker.pkg.dev/sportapp-prod-lfnj-2026/sportapp-backend/third-party-management@sha256:8b0018b35d4610fc8760d4546f1437576788e1bf2ec05d1d1532ce04af68d751"
+      training-management: "us-central1-docker.pkg.dev/sportapp-prod-lfnj-2026/sportapp-backend/training-management@sha256:cc8409a3f1241fbede17357c01bc46e991b1a194a7994452b5cd71162ac8f853"
+      users-management: "us-central1-docker.pkg.dev/sportapp-prod-lfnj-2026/sportapp-backend/users-management@sha256:e7dd2f1d0394f562da70e8de1eaa2ae83d25c44f215ae2f0f7efdcadf67d4b84"
+    evidence:
+      uri: "gs://sportapp-mgmt-lfnj-2026-delivery-evidence-backend/sport-app-backend/v0.4.0/backend-release.json"
+      sha256: "67aea4c0af6fb459c66e789e4aa5f3e164281d9dd1973b57ebd912b5c302f8f7"
+      cloudBuildId: "b1315576-539c-487e-bea5-2dff23ad84e2"
   frontend:
-    repository: https://github.com/lfnavarroj1/sport-app-frontend
+    repository: "https://github.com/lfnavarroj1/sport-app-frontend"
     version: "0.3.0"
     ref: "v0.3.0"
     commit: "7b84e72339077184991f2f4173d64fc8ef942e77"
-    expectedBffContract: null
-    artifact: null
+    expectedBffContract: "0.34.0"
+    artifact:
+      uri: "us-central1-docker.pkg.dev/sportapp-prod-lfnj-2026/sportapp-frontend/web@sha256:506fffb362bcec534992d3ae750afdb9db8dbb188866e111ea9d59b12b0d617c"
+    evidence:
+      uri: "gs://sportapp-mgmt-lfnj-2026-delivery-evidence-frontend/frontend/v0.3.0/frontend-release.json"
+      sha256: "5a12d96dde0f415997fda7ad60ebe4ffe52be345f3f0e7014af1c0c87f8fe251"
+      cloudBuildId: "f3d6c518-4346-41b8-b611-9a7d81fedc3f"
   mobile:
-    repository: https://github.com/lfnavarroj1/sport-app-movil
+    repository: "https://github.com/lfnavarroj1/sport-app-movil"
     version: "0.2.0"
     versionCode: 2000
     ref: "v0.2.0"
