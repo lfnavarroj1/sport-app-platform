@@ -1235,6 +1235,14 @@ function Invoke-Images($Cfg) {
     Write-Info 'Un tag que no aparece no terminó en SUCCESS: .\scripts\sportapp-release.ps1 builds muestra el error.'
 }
 
+# Caracteres libres para el sufijo. Cloud Deploy nombra el primer rollout
+# <pipeline>-v<versión>-<commit7>[-sufijo]-to-<target>-0001 con un máximo de 63
+# caracteres; el caso más largo es backend-gke con production-gke-migrations.
+function Get-SuffixRoom([string]$Version) {
+    $base = "backend-gke-$($Version -replace '\.', '-')-0000000-to-production-gke-migrations-0001"
+    63 - $base.Length - 1
+}
+
 # Sin versiones en la línea de comandos: las elige en menús entre las publicadas.
 function Select-PromoteVersions($Cfg) {
     $published = Get-PublishedVersions
@@ -1248,7 +1256,10 @@ function Select-PromoteVersions($Cfg) {
     $again = @(Get-PromotedVersions $Cfg 'backend-gke') -contains $BackendVersion
     if ($FrontendVersion) { $again = $again -or (@(Get-PromotedVersions $Cfg 'frontend-web') -contains $FrontendVersion) }
     if ($again -and -not $ReleaseSuffix) {
-        $script:ReleaseSuffix = 'r' + (Get-Random -Minimum 1 -Maximum 100)
+        $room = [Math]::Min((Get-SuffixRoom $BackendVersion), 8)
+        if ($room -lt 1) { throw "El nombre del rollout de $BackendVersion no admite sufijo: no se puede volver a promover esa versión." }
+        $chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
+        $script:ReleaseSuffix = -join (1..$room | ForEach-Object { $chars[(Get-Random -Maximum $chars.Length)] })
         Write-Note "Esa versión ya tiene release en Cloud Deploy; se usa el sufijo $ReleaseSuffix."
     }
     Write-Step 'Despliegue'
@@ -1268,13 +1279,10 @@ function Invoke-Promote($Cfg) {
         if ($v -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$') { throw "'$v' no es un tag SemVer vX.Y.Z." }
     }
     if ($ReleaseSuffix -and $ReleaseSuffix -notmatch '^[a-z0-9]{1,8}$') { throw 'El sufijo admite de 1 a 8 minúsculas o dígitos.' }
-    # Cloud Deploy nombra el primer rollout <pipeline>-v<versión>-<commit7>[-sufijo]-to-<target>-0001
-    # con un máximo de 63 caracteres; el caso más largo es backend-gke con production-gke-migrations.
-    if ($BackendVersion) {
-        $longest = "backend-gke-$($BackendVersion -replace '\.', '-')-0000000" + $(if ($ReleaseSuffix) { "-$ReleaseSuffix" } else { '' }) + '-to-production-gke-migrations-0001'
-        if ($longest.Length -gt 63) {
-            $room = 63 - ($longest.Length - $(if ($ReleaseSuffix) { $ReleaseSuffix.Length + 1 } else { 0 })) - 1
-            throw "El nombre del rollout tendría $($longest.Length) caracteres (máximo 63). Usa un sufijo de $([Math]::Max($room, 0)) caracteres como máximo, por ejemplo -ReleaseSuffix r1."
+    if ($BackendVersion -and $ReleaseSuffix) {
+        $room = Get-SuffixRoom $BackendVersion
+        if ($ReleaseSuffix.Length -gt $room) {
+            throw "El nombre del rollout tendría $(63 - $room + $ReleaseSuffix.Length) caracteres (máximo 63). Usa un sufijo de $([Math]::Max($room, 0)) caracteres como máximo, por ejemplo -ReleaseSuffix r1."
         }
     }
     if (-not (Test-Auth $Cfg)) { throw 'Corrige la autenticación de gcloud.' }

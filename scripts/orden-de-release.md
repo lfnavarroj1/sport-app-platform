@@ -157,12 +157,11 @@ La primera vez cambia el orden de los pasos 1 y 6, porque Cloud Run se crea con 
 
 ## 6. Hotfix
 
-Las opciones de componentes publican siempre desde `develop` (PR `develop` → `main`), así que no cubren un hotfix que nace en `main`. El orden se conserva, con incremento `PATCH`:
+`release` publica siempre desde `develop`. Un defecto urgente en `main`, cuando `develop` ya tiene trabajo que no se quiere publicar, sale con la opción *Publicar un hotfix desde main* (comando `hotfix`). El orden se conserva, con incremento `PATCH`:
 
-1. en el componente, crea `hotfix/vX.Y.Z-descripcion` desde `main` o el tag vigente, abre su PR hacia `main`, fusiónalo y crea la GitHub Release `vX.Y.Z` a mano; para backend y frontend, espera Cloud Build con `sportapp-release.ps1 builds -Target <componente> -<Componente>Version vX.Y.Z`;
-2. mueve el submódulo con `sportapp-release.ps1 submodules` y la opción del componente y fusiona el PR de submódulos (paso 3);
+1. `sportapp-release.ps1 hotfix -Target <componente>` ([sección del manual](sportapp-release.md#hotfix)): crea o reutiliza `hotfix/vX.Y.Z` desde `main`, espera a que subas la corrección, abre el PR hacia `main` y sigue como `release` (tag, workflow, Cloud Build o APK, submódulos y manifiesto); al final abre el PR de retorno hacia `develop` del componente, que revisas y fusionas;
+2. fusiona el PR de submódulos (paso 3);
 3. publica la plataforma con `-Bump patch` (paso 5);
-4. despliega (paso 6);
-5. retorna la corrección a `develop` del componente con un PR.
+4. despliega (paso 6).
 
 El procedimiento completo está en el [manual de versiones](../docs/manual-versionado.md#hotfix).

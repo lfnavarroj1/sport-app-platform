@@ -5,7 +5,8 @@
 
 .DESCRIPTION
     Se ejecuta desde la estación del operador con su sesión de GitHub CLI (gh). Sin
-    -Target muestra un menú para elegir qué se publica:
+    comando muestra un menú con los comandos de abajo; sin -Target, otro menú
+    para elegir qué se publica o se consulta:
 
       1. Solo backend
       2. Backend y frontend
@@ -13,7 +14,7 @@
       4. Solo aplicación móvil
       5. Plataforma (versión del sistema)
 
-    Comandos (por defecto, release):
+    Comandos:
 
       release     Backend y frontend: PR develop -> main, pruebas, aprobación,
                   merge, release vX.Y.Z, workflow de release, Cloud Build
@@ -21,8 +22,12 @@
                   Móvil: las mismas fases y, al final, el APK firmado adjunto a la
                   release. Plataforma: rama release/vX.Y.Z desde develop, manifiesto
                   released con la evidencia de Cloud Build, PR a main, tag y
-                  retorno a develop con el ciclo siguiente abierto.
-      check       Valida gh, permisos, ramas y las herramientas de lo elegido.
+                  retorno a develop con el ciclo siguiente abierto. Si falta el
+                  almacén de claves del APK, ofrece crearlo.
+      hotfix      Backend, frontend o móvil: crea hotfix/vX.Y.Z (PATCH) desde main,
+                  espera la corrección, PR hotfix -> main y las mismas fases de
+                  release; al final abre el PR de retorno hacia develop.
+      check     Valida gh, permisos, ramas y las herramientas de lo elegido.
       status      Cambios pendientes de develop, PR abierto y última release.
       prepare     Una sola vez: crea main (frontend), renombra master a main
                   (móvil) o crea develop (plataforma).
@@ -49,8 +54,9 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('help', 'check', 'status', 'prepare', 'keystore', 'release', 'builds', 'apk', 'submodules')]
-    [string]$Command = 'release',
+    # Vacío: menú.
+    [ValidateSet('help', 'check', 'status', 'prepare', 'keystore', 'release', 'hotfix', 'builds', 'apk', 'submodules')]
+    [string]$Command,
 
     # Qué se publica o se consulta; sin -Target se pregunta con un menú.
     [ValidateSet('backend', 'backend-frontend', 'frontend', 'mobile', 'platform', 'all')]
@@ -98,6 +104,9 @@ if (-not $ConfigFile) { $ConfigFile = Join-Path $PlatformRoot '.env.ps1' }
 elseif (Test-Path -LiteralPath $ConfigFile) { $ConfigFile = (Resolve-Path -LiteralPath $ConfigFile).Path }
 $ReleaseScriptName = 'sportapp-release.ps1'
 $Repos = @()
+# hotfix reutiliza las fases de release con la rama hotfix/vX.Y.Z en vez de develop.
+$HotfixMode = $false
+$ReleaseKind = 'release'
 
 $Components = [ordered]@{
     backend  = @{ Repo = 'sport-app-backend'; Label = 'Backend'; Workflow = 'release-validation.yml'; Trigger = 'release-backend' }
@@ -121,10 +130,25 @@ $CommandTargets = @{
     status     = @{ Verb = 'consultar'; Targets = $Releasable + 'all' }
     prepare    = @{ Verb = 'preparar'; Targets = $Releasable }
     release    = @{ Verb = 'publicar'; Targets = $Releasable }
+    hotfix     = @{ Verb = 'corregir con un hotfix'; Targets = @('backend', 'backend-frontend', 'frontend', 'mobile') }
     builds     = @{ Verb = 'revisar en Cloud Build'; Targets = @('backend', 'backend-frontend', 'frontend') }
     submodules = @{ Verb = 'fijar en la plataforma'; Targets = @('backend', 'backend-frontend', 'frontend', 'mobile') }
     apk        = @{ Verb = 'compilar'; Targets = @('mobile') }
     keystore   = @{ Verb = 'preparar'; Targets = @('mobile') }
+}
+
+# Menú de comandos cuando no se indica ninguno.
+$CommandMenu = [ordered]@{
+    release    = 'Publicar una release (backend, frontend, móvil o plataforma)'
+    hotfix     = 'Publicar un hotfix desde main (backend, frontend o móvil)'
+    status     = 'Ver cambios pendientes, PR abierto y última release'
+    builds     = 'Consultar o esperar el Cloud Build de un tag'
+    apk        = 'Compilar, firmar y adjuntar el APK de una release móvil'
+    submodules = 'Mover components/* a los tags publicados'
+    check      = 'Validar gh, permisos, ramas y herramientas'
+    prepare    = 'Preparación única: crear o renombrar ramas main/develop'
+    keystore   = 'Preparación única: crear el almacén de claves del APK'
+    help       = 'Ayuda'
 }
 
 $SemVerPattern = '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$'
@@ -238,9 +262,9 @@ function Test-Branch([string]$Repo, [string]$Branch) {
     (Invoke-Capture gh @('api', "repos/$Repo/branches/$Branch", '--jq', '.name') -AllowFailure).ExitCode -eq 0
 }
 
-function Get-Ahead([string]$Repo) {
+function Get-Ahead([string]$Repo, [string]$Head = 'develop') {
     # Sin comillas dentro del filtro: Windows PowerShell 5.1 no las escapa al llamar a gh.
-    $c = Invoke-GhJson @('api', "repos/$Repo/compare/main...develop", '--jq', '{ahead: .ahead_by, behind: .behind_by, commits: [.commits[] | {sha: .sha, message: .commit.message}]}')
+    $c = Invoke-GhJson @('api', "repos/$Repo/compare/main...$Head", '--jq', '{ahead: .ahead_by, behind: .behind_by, commits: [.commits[] | {sha: .sha, message: .commit.message}]}')
     [pscustomobject]@{
         ahead   = $c.ahead
         behind  = $c.behind
@@ -273,11 +297,11 @@ function Get-NextVersion([string]$Latest) {
     }
 }
 
-# Último PR develop -> main fusionado cuyo merge no está en el último tag estable:
+# Último PR <Head> -> main fusionado cuyo merge no está en el último tag estable:
 # la release se cortó después del merge (fase 3) y se retoma en la fase 4. Con
-# develop sin cambios no se puede abrir otro PR, así que sin esto quedaría omitido.
-function Get-UnreleasedMerge([string]$Repo, [string]$Latest) {
-    $merged = @(Invoke-GhJson @('pr', 'list', '--repo', $Repo, '--base', 'main', '--head', 'develop', '--state', 'merged', '--limit', '1', '--json', 'number,url,title,mergeCommit') | Where-Object { $_ }) | Select-Object -First 1
+# la rama sin cambios no se puede abrir otro PR, así que sin esto quedaría omitido.
+function Get-UnreleasedMerge([string]$Repo, [string]$Latest, [string]$Head = 'develop') {
+    $merged = @(Invoke-GhJson @('pr', 'list', '--repo', $Repo, '--base', 'main', '--head', $Head, '--state', 'merged', '--limit', '1', '--json', 'number,url,title,mergeCommit') | Where-Object { $_ }) | Select-Object -First 1
     if (-not $merged -or -not $merged.mergeCommit) { return $null }
     if ($Latest) {
         $ahead = (Invoke-Capture gh @('api', "repos/$Repo/compare/$Latest...$($merged.mergeCommit.oid)", '--jq', '.ahead_by')).Output
@@ -322,58 +346,117 @@ function New-ReleaseItems {
         $item = [pscustomobject]@{
             Key = $key; Repo = $repo; Label = $Components[$key].Label; Workflow = $Components[$key].Workflow
             Version = $null; Latest = $null; Pr = $null; PrUrl = $null; MergeSha = $null; State = 'pendiente'; Detail = ''
-            Commits = @()
+            Commits = @(); Head = 'develop'; HeadExists = $true
         }
         if (-not (Test-Branch $repo 'main')) { $item.State = 'omitido'; $item.Detail = 'no existe main: ejecuta prepare'; $item; continue }
         if (-not (Test-Branch $repo 'develop')) { $item.State = 'omitido'; $item.Detail = 'no existe develop'; $item; continue }
-        $diff = Get-Ahead $repo
-        $item.Commits = @($diff.commits)
         $tags = Get-Tags $repo
         $item.Latest = Get-LatestStable $tags
         $explicit = @{ backend = $BackendVersion; frontend = $FrontendVersion; mobile = $MobileVersion }[$key]
-        # La versión aprobada es la del título del PR fusionado ("release: <Label> vX.Y.Z").
-        $merged = Get-UnreleasedMerge $repo $item.Latest
-        $approved = if ($merged -and $merged.title -match '\s(v\S+)$') { $Matches[1] }
-        if ($approved -and $tags -contains $approved) { $merged = $null; $approved = $null }
-        $item.Version = if ($explicit) { $explicit } elseif ($approved) { $approved } else { Get-NextVersion $item.Latest }
+        if ($HotfixMode) {
+            # Hotfix: siempre PATCH sobre el último tag y desde su propia rama.
+            $item.Version = if ($explicit) { $explicit } else { Get-NextVersion $item.Latest }
+            # Se usa la rama hotfix/vX.Y.Z[-descripcion] que ya exista (manual de versiones).
+            $refs = @((Invoke-Capture gh @('api', "repos/$repo/git/matching-refs/heads/hotfix/$($item.Version)", '--jq', '.[].ref') -AllowFailure).Output -split "`n" |
+                    Where-Object { $_ -match "^refs/heads/(hotfix/$([regex]::Escape($item.Version))(-[^/]+)?)$" } | ForEach-Object { $Matches[1] })
+            if ($refs.Count -gt 1) { throw "$($item.Label): hay varias ramas de hotfix para $($item.Version) ($($refs -join ', ')); deja una." }
+            $item.Head = if ($refs.Count) { $refs[0] } else { "hotfix/$($item.Version)" }
+            $item.HeadExists = [bool]$refs.Count
+            $merged = Get-UnreleasedMerge $repo $item.Latest $item.Head
+        } else {
+            # La versión aprobada es la del título del PR fusionado ("release: <Label> vX.Y.Z").
+            $merged = Get-UnreleasedMerge $repo $item.Latest
+            $approved = if ($merged -and $merged.title -match '\s(v\S+)$') { $Matches[1] }
+            if ($approved -and $tags -contains $approved) { $merged = $null; $approved = $null }
+            $item.Version = if ($explicit) { $explicit } elseif ($approved) { $approved } else { Get-NextVersion $item.Latest }
+        }
         if ($item.Version -notmatch $SemVerPattern) { throw "$($item.Label): '$($item.Version)' no es vX.Y.Z." }
         if ($tags -contains $item.Version) { throw "$($item.Label): el tag $($item.Version) ya existe; indica otra versión." }
+        $diff = if ($item.HeadExists) { Get-Ahead $repo $item.Head } else { [pscustomobject]@{ ahead = 0; commits = @() } }
+        $item.Commits = @($diff.commits)
         if ($merged) {
             $item.Pr = $merged.number; $item.PrUrl = $merged.url; $item.MergeSha = $merged.mergeCommit.oid; $item.State = 'fusionado'
             $item.Detail = "el PR #$($item.Pr) se fusionó sin release"
+        } elseif ($HotfixMode) {
+            # La corrección se sube después de crear la rama (Initialize-HotfixBranches).
+            if (-not $item.HeadExists) { $item.Detail = "se crea $($item.Head) desde main" }
+            elseif ($diff.ahead -eq 0) { $item.Detail = "$($item.Head) todavía no tiene la corrección" }
         } elseif ($diff.ahead -eq 0) { $item.State = 'omitido'; $item.Detail = 'develop no tiene cambios respecto de main' }
         $item
     }
     @($items)
 }
 
+# Hotfix: crea las ramas que falten desde main y espera a que el operador suba la
+# corrección. Una rama que siga sin cambios respecto de main se omite.
+function Initialize-HotfixBranches($Items) {
+    Write-Step 'Fase 0: ramas de hotfix'
+    foreach ($i in $Items | Where-Object { $_.State -eq 'pendiente' }) {
+        if (-not $i.HeadExists) {
+            $sha = (Invoke-Capture gh @('api', "repos/$($i.Repo)/branches/main", '--jq', '.commit.sha')).Output
+            [void](Invoke-Capture gh @('api', '-X', 'POST', "repos/$($i.Repo)/git/refs", '-f', "ref=refs/heads/$($i.Head)", '-f', "sha=$sha"))
+            $i.HeadExists = $true
+            Write-Ok "$($i.Label): $($i.Head) creada en main ($($sha.Substring(0, 7)))"
+        }
+        while (-not $i.Commits.Count) {
+            Write-Note "$($i.Label): sube la corrección a $($i.Head) en $($i.Repo):"
+            Write-Info "git fetch origin"
+            Write-Info "git switch $($i.Head)"
+            Write-Info "# corrige, prueba y confirma"
+            Write-Info "git push origin $($i.Head)"
+            $answer = Read-Host "Presiona Enter cuando esté subida (o escribe 'omitir' para dejar $($i.Label) fuera)"
+            if ($answer -eq 'omitir') { $i.State = 'omitido'; $i.Detail = 'hotfix sin corrección'; break }
+            $i.Commits = @((Get-Ahead $i.Repo $i.Head).commits)
+            if (-not $i.Commits.Count) { Write-Bad "$($i.Head) sigue igual que main" }
+        }
+        if ($i.State -eq 'pendiente') { Write-Ok "$($i.Label): $($i.Commits.Count) commit(s) en $($i.Head)" }
+    }
+}
+
+# Hotfix: la corrección vuelve a develop con un PR que revisa el operador; puede
+# tener conflictos con lo que develop avanzó después.
+function Open-BackMergePrs($Items) {
+    Write-Step 'Retorno del hotfix a develop'
+    foreach ($i in $Items | Where-Object { $_.MergeSha }) {
+        $open = @(Invoke-GhJson @('pr', 'list', '--repo', $i.Repo, '--base', 'develop', '--head', $i.Head, '--state', 'open', '--json', 'url') | Where-Object { $_ })
+        if ($open.Count) { Write-Ok "$($i.Label): ya existe $($open[0].url)"; continue }
+        $file = Join-Path $env:TEMP "sportapp-pr-back-$($i.Key).md"
+        Write-TextFile $file "Devuelve a develop el hotfix **$($i.Version)** de $($i.Label) (PR $($i.PrUrl)).`n`nGenerado por ``sport-app-platform/scripts/$ReleaseScriptName``."
+        $r = Invoke-Capture gh @('pr', 'create', '--repo', $i.Repo, '--base', 'develop', '--head', $i.Head, '--title', "chore: devolver hotfix $($i.Label) $($i.Version) a develop", '--body-file', $file) -AllowFailure
+        Remove-Item -LiteralPath $file -ErrorAction SilentlyContinue
+        if ($r.ExitCode -eq 0) { Write-Ok "$($i.Label): $(($r.Output -split "`n")[-1]) (revísalo y fusiónalo)" }
+        else { Write-Bad "$($i.Label): no se abrió el PR hacia develop: $($r.Error)" }
+    }
+}
+
 function Show-Plan($Items, [string]$System) {
-    Write-Step "Plan de release (sistema $System)"
+    Write-Step "Plan de $ReleaseKind (sistema $System)"
     foreach ($i in $Items) {
         if ($i.State -eq 'omitido') { Write-Note "$($i.Label): omitido ($($i.Detail))"; continue }
         $from = if ($i.Latest) { $i.Latest } else { 'sin tags' }
         if ($i.State -eq 'fusionado') {
             Write-Note "$($i.Label): $from -> $($i.Version) ya está en main (PR #$($i.Pr), $($i.MergeSha.Substring(0, 7))) pero no tiene release; se retoma desde la release"
-            if ($i.Commits.Count) { Write-Info "develop tiene $($i.Commits.Count) commit(s) más: van en la siguiente release" }
+            if ($i.Commits.Count) { Write-Info "$($i.Head) tiene $($i.Commits.Count) commit(s) más: van en la siguiente release" }
             continue
         }
-        Write-Ok "$($i.Label): $from -> $($i.Version) con $($i.Commits.Count) commit(s) de develop"
+        Write-Ok "$($i.Label): $from -> $($i.Version) con $($i.Commits.Count) commit(s) de $($i.Head)"
+        if ($i.Detail) { Write-Info $i.Detail }
         $i.Commits | Select-Object -First 10 | ForEach-Object { Write-Info $_ }
         if ($i.Commits.Count -gt 10) { Write-Info "... y $($i.Commits.Count - 10) más" }
     }
 }
 
 function Open-PullRequests($Items, [string]$System) {
-    Write-Step 'Fase 1: pull requests develop -> main'
+    Write-Step "Fase 1: pull requests hacia main"
     foreach ($i in $Items | Where-Object { $_.State -eq 'pendiente' }) {
-        $open = @(Invoke-GhJson @('pr', 'list', '--repo', $i.Repo, '--base', 'main', '--head', 'develop', '--state', 'open', '--json', 'number,url'))
+        $open = @(Invoke-GhJson @('pr', 'list', '--repo', $i.Repo, '--base', 'main', '--head', $i.Head, '--state', 'open', '--json', 'number,url'))
         if ($open.Count -gt 0 -and $open[0]) {
             $i.Pr = $open[0].number; $i.PrUrl = $open[0].url
             Write-Ok "$($i.Label): se reutiliza el PR #$($i.Pr) $($i.PrUrl)"
             continue
         }
         $body = @(
-            "Release **$($i.Version)** de $($i.Label) (versión del sistema $System)."
+            "$(if ($HotfixMode) { 'Hotfix' } else { 'Release' }) **$($i.Version)** de $($i.Label) desde ``$($i.Head)`` (versión del sistema $System)."
             ''
             "Generado por ``sport-app-platform/scripts/$ReleaseScriptName``. Al fusionarse se crea la release y su tag sobre el commit de merge."
             ''
@@ -382,7 +465,7 @@ function Open-PullRequests($Items, [string]$System) {
         ) -join "`n"
         $file = Join-Path $env:TEMP "sportapp-pr-$($i.Key).md"
         Write-TextFile $file $body
-        $r = Invoke-Capture gh @('pr', 'create', '--repo', $i.Repo, '--base', 'main', '--head', 'develop', '--title', "release: $($i.Label) $($i.Version)", '--body-file', $file)
+        $r = Invoke-Capture gh @('pr', 'create', '--repo', $i.Repo, '--base', 'main', '--head', $i.Head, '--title', "${ReleaseKind}: $($i.Label) $($i.Version)", '--body-file', $file)
         Remove-Item -LiteralPath $file -ErrorAction SilentlyContinue
         $i.PrUrl = ($r.Output -split "`n")[-1]
         $i.Pr = [int](($i.PrUrl -split '/')[-1])
@@ -444,7 +527,7 @@ function Approve-AndMerge($Items) {
         $answer = Read-Host "¿Apruebas y fusionas $($i.Label) $($i.Version)? Escribe 'si' para aprobar, otra cosa para omitir"
         if ($answer -ne 'si') { $i.State = 'omitido'; $i.Detail = 'no aprobado por el operador'; Write-Note "$($i.Label): omitido"; continue }
 
-        $subject = "release: $($i.Label) $($i.Version) (#$($i.Pr))"
+        $subject = "${ReleaseKind}: $($i.Label) $($i.Version) (#$($i.Pr))"
         if ($token) {
             [void](Invoke-AsReviewer $token @('pr', 'review', "$($i.Pr)", '--repo', $i.Repo, '--approve', '--body', "Aprobado desde $ReleaseScriptName para $($i.Version)."))
             Write-Ok 'PR aprobado por la cuenta revisora'
@@ -516,11 +599,13 @@ function Invoke-ReleasePhases([string]$System) {
     Show-Plan $items $System
     if (-not @($items | Where-Object { $_.State -in 'pendiente', 'fusionado' }).Count) { Write-Note 'No hay nada que publicar.'; return $null }
     Confirm-Step '¿Continuar con estas versiones?'
+    if ($HotfixMode) { Initialize-HotfixBranches $items }
     Open-PullRequests $items $System
     Wait-Checks $items
     Approve-AndMerge $items
     New-Releases $items $System
     Wait-ReleaseWorkflows $items
+    if ($HotfixMode) { Open-BackMergePrs $items }
     , $items
 }
 
@@ -800,6 +885,15 @@ function Get-Java {
     $null
 }
 
+# keytool está en el bin del JDK real. El java del PATH puede ser un acceso
+# directo (Oracle javapath) que no lo trae al lado; java.home dice dónde está el JDK.
+function Get-Keytool([string]$Java) {
+    $candidates = @(Join-Path (Split-Path -Parent $Java) 'keytool.exe')
+    $props = Invoke-Capture $Java @('-XshowSettings:properties', '-version') -AllowFailure
+    if ("$($props.Error)`n$($props.Output)" -match 'java\.home\s*=\s*(.+)') { $candidates += Join-Path $Matches[1].Trim() 'bin\keytool.exe' }
+    $candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+}
+
 function Get-BffUrl {
     if ($script:Cfg.mobileBffBaseUrl) { $url = $script:Cfg.mobileBffBaseUrl }
     else {
@@ -833,7 +927,7 @@ function Publish-Apk([string]$Tag, [string]$System) {
     $repoPath = $script:Cfg.mobileRepoPath
     $repo = Get-RepoName 'mobile'
     if (-not (Test-Path -LiteralPath (Join-Path $repoPath '.git'))) { throw "No se encontró el clon del móvil en $repoPath (define `$mobileRepoPath)." }
-    if (-not (Test-Path -LiteralPath $script:Cfg.mobileKeystoreFile)) { throw "No existe el almacén de claves $($script:Cfg.mobileKeystoreFile): ejecuta .\scripts\sportapp-release.ps1 keystore" }
+    Assert-Keystore
     $release = Invoke-GhJson @('release', 'view', $Tag, '--repo', $repo, '--json', 'tagName,url') -AllowFailure
     if (-not $release) { throw "No existe la release $Tag en $repo." }
     $sdk = Get-AndroidSdk
@@ -918,7 +1012,8 @@ function Invoke-Keystore {
     if (Test-Path -LiteralPath $file) { Write-Ok "ya existe $file; no se reemplaza"; return }
     $java = Get-Java
     if (-not $java) { throw 'Se requiere un JDK (keytool) 17 o superior.' }
-    $keytool = Join-Path (Split-Path -Parent $java) 'keytool.exe'
+    $keytool = Get-Keytool $java
+    if (-not $keytool) { throw "No se encontró keytool junto a $java ni en su JDK; instala un JDK 17 o superior o define JAVA_HOME." }
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $file) | Out-Null
     Write-Step "Almacén de claves de firma: $file (alias $($script:Cfg.mobileKeyAlias))"
     Write-Info 'keytool pedirá la contraseña y los datos del certificado. Guarda una copia del archivo y de la'
@@ -945,10 +1040,17 @@ function Test-MobileTools {
     $ok
 }
 
+# Sin almacén de claves no se firma el APK: ofrece crearlo en el momento.
+function Assert-Keystore {
+    if (Test-Path -LiteralPath $script:Cfg.mobileKeystoreFile) { return }
+    Write-Note "No existe el almacén de claves del APK ($($script:Cfg.mobileKeystoreFile))."
+    $answer = Read-Host "¿Crearlo ahora? Escribe 'si' para crearlo (Enter cancela; con -SkipApk se publica sin APK)"
+    if ($answer -ne 'si') { throw "Falta el almacén de claves del APK: créalo con la opción keystore o usa -SkipApk." }
+    Invoke-Keystore
+}
+
 function Invoke-MobileRelease {
-    if (-not $SkipApk -and -not (Test-Path -LiteralPath $script:Cfg.mobileKeystoreFile)) {
-        throw "Falta el almacén de claves del APK ($($script:Cfg.mobileKeystoreFile)): ejecuta keystore o usa -SkipApk."
-    }
+    if (-not $SkipApk) { Assert-Keystore }
     $system = Get-SystemVersion
     $items = Invoke-ReleasePhases $system
     if (-not $items) { return }
@@ -1399,9 +1501,24 @@ function Select-Target([string[]]$Allowed, [string]$Verb) {
     $Allowed[$index - 1]
 }
 
+function Select-Command {
+    $keys = @($CommandMenu.Keys)
+    Write-Step '¿Qué quieres hacer?'
+    for ($n = 0; $n -lt $keys.Count; $n++) { Write-Host ("  {0}. {1}" -f ($n + 1), $CommandMenu[$keys[$n]]) }
+    Write-Host ''
+    $answer = Read-Host "Escribe el número de la opción (1-$($keys.Count)) o Enter para salir"
+    if (-not $answer) { throw 'Cancelado por el operador; no se hizo nada.' }
+    $index = 0
+    if (-not [int]::TryParse($answer.Trim(), [ref]$index) -or $index -lt 1 -or $index -gt $keys.Count) { throw "'$answer' no es una opción del menú." }
+    $keys[$index - 1]
+}
+
 $previousEncoding = [Console]::OutputEncoding
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { $previousEncoding = $null }
 try {
+    # Con -Target y sin comando se conserva el comportamiento anterior: release.
+    if (-not $Command) { $Command = if ($Target) { 'release' } else { Select-Command } }
+    if ($Command -eq 'hotfix') { $HotfixMode = $true; $ReleaseKind = 'hotfix'; $Bump = 'patch' }
     if ($Command -eq 'help') { Get-Help $PSCommandPath -Detailed | Out-Host; return }
     $script:Cfg = Read-Config
     $Target = Select-Target $CommandTargets[$Command].Targets $CommandTargets[$Command].Verb
@@ -1412,7 +1529,7 @@ try {
         'status' { Invoke-StatusCommand }
         'prepare' { Invoke-PrepareCommand }
         'keystore' { Invoke-Keystore }
-        'release' { Invoke-ReleaseCommand }
+        { $_ -in 'release', 'hotfix' } { Invoke-ReleaseCommand }
         'builds' { Invoke-BuildsCommand }
         'apk' { Invoke-ApkCommand }
         'submodules' { Invoke-SubmodulesCommand }
