@@ -7,7 +7,9 @@
     a mano es platform\.env.ps1 (plantilla: .env.example.ps1); el script genera
     los bootstrap.auto.tfvars, gcp.auto.tfvars y backend.hcl de cada raíz.
 
-      check    Valida herramientas, variables de .env.ps1, archivos de variables y
+    Sin comando muestra un menú con todas las opciones.
+
+      check   Valida herramientas, variables de .env.ps1, archivos de variables y
                autenticación. No cambia nada.
       setup    Preparación completa e idempotente: proyectos, APIs, bootstrap,
                production, production-workloads, delivery y primera creación de
@@ -20,10 +22,16 @@
                proyectos, estado, identidades, Artifact Registry con sus
                imágenes, Secret Manager, red, Pub/Sub, Cloud Build y Cloud Deploy.
       status   Muestra qué recursos costosos existen.
+      images   Muestra las versiones de backend y frontend con imágenes publicadas
+               por Cloud Build y la última release creada en Cloud Deploy.
       promote  Ejecuta el trigger promote-release. La aprobación sigue siendo humana.
+               Sin -BackendVersion pregunta las versiones en un menú.
 
     Cada apply muestra el plan y pide confirmación. No crea llaves, no usa GitHub
     y no aprueba rollouts. Instrucciones de uso: scripts/sportapp-gcp.md.
+
+.EXAMPLE
+    .\scripts\sportapp-gcp.ps1
 
 .EXAMPLE
     .\scripts\sportapp-gcp.ps1 check
@@ -37,8 +45,9 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('help', 'check', 'setup', 'up', 'down', 'status', 'promote')]
-    [string]$Command = 'help',
+    # Vacío: menú.
+    [ValidateSet('help', 'check', 'setup', 'up', 'down', 'status', 'images', 'promote')]
+    [string]$Command,
 
     # Archivo de configuración; por defecto platform\.env.ps1.
     [string]$ConfigFile,
@@ -124,6 +133,17 @@ function Confirm-Step([string]$Question, [switch]$Always) {
     if ($AutoApprove -and -not $Always) { return }
     $answer = Read-Host "$Question Escribe 'si' para continuar"
     if ($answer -ne 'si') { throw 'Cancelado por el operador; no se aplicó nada más.' }
+}
+
+# Menú numerado; devuelve el Value de la opción elegida. Enter cancela.
+function Select-Option([string]$Question, [object[]]$Options) {
+    Write-Step $Question
+    for ($i = 0; $i -lt $Options.Count; $i++) { Write-Host ('  {0}. {1}' -f ($i + 1), $Options[$i].Label) }
+    $answer = "$(Read-Host 'Número (Enter para cancelar)')".Trim()
+    if (-not $answer) { throw 'Cancelado por el operador; no se aplicó nada más.' }
+    $n = 0
+    if (-not [int]::TryParse($answer, [ref]$n) -or $n -lt 1 -or $n -gt $Options.Count) { throw "'$answer' no es una opción del menú." }
+    $Options[$n - 1].Value
 }
 
 # Detiene el script en un paso manual. No es un error: al repetir el comando
@@ -880,17 +900,44 @@ function Invoke-Delivery($Cfg, $Prepared, [string]$Name) {
     [void](Invoke-TerraformStep -Key delivery -Name $Name -Purpose 'Cloud Build y Cloud Deploy')
 }
 
-function Get-LatestTag([string]$Prefix, [string]$Preferred) {
+# Tags con evidencia en el bucket, del más reciente al más antiguo (estables
+# primero). Cloud Build solo sube la evidencia cuando el build termina en SUCCESS.
+function Get-EvidenceTags([string]$Prefix) {
     $r = Invoke-Capture gcloud @('storage', 'ls', $Prefix, '--quiet') -AllowFailure
-    if ($r.ExitCode -ne 0) { return $null }
+    if ($r.ExitCode -ne 0) { return @() }
     $tags = foreach ($line in $r.Output -split "`n") {
         if ($line -match '/(v([0-9]+)\.([0-9]+)\.([0-9]+)(-[0-9A-Za-z.-]+)?)/$') {
             [pscustomobject]@{ Tag = $Matches[1]; Major = [int]$Matches[2]; Minor = [int]$Matches[3]; Patch = [int]$Matches[4]; Stable = -not $Matches[5] }
         }
     }
-    $tags = @($tags)
-    if ($Preferred) { return ($tags | Where-Object { $_.Tag -eq $Preferred } | ForEach-Object { $_.Tag } | Select-Object -First 1) }
-    ($tags | Sort-Object Stable, Major, Minor, Patch, Tag | Select-Object -Last 1).Tag
+    @($tags | Sort-Object Stable, Major, Minor, Patch, Tag -Descending | ForEach-Object { $_.Tag })
+}
+
+function Get-LatestTag([string]$Prefix, [string]$Preferred) {
+    $tags = Get-EvidenceTags $Prefix
+    if ($Preferred) { return ($tags | Where-Object { $_ -eq $Preferred } | Select-Object -First 1) }
+    $tags | Select-Object -First 1
+}
+
+# Versiones de backend y frontend con imágenes publicadas, según la evidencia.
+function Get-PublishedVersions {
+    $buckets = Get-Value (Get-Value (Get-RootOutputs 'delivery') 'evidence_buckets') 'value'
+    if (-not (Get-Value $buckets 'backend') -or -not (Get-Value $buckets 'frontend')) {
+        throw 'No se leyeron los buckets de evidencia de delivery: ejecuta setup primero.'
+    }
+    [ordered]@{
+        backend  = Get-EvidenceTags "gs://$(Get-Value $buckets 'backend')/sport-app-backend/"
+        frontend = Get-EvidenceTags "gs://$(Get-Value $buckets 'frontend')/frontend/"
+    }
+}
+
+# Versiones con release en un pipeline de Cloud Deploy, de la más reciente a la más antigua.
+function Get-PromotedVersions($Cfg, [string]$Pipeline) {
+    $releases = Invoke-GcloudJson @('deploy', 'releases', 'list', "--delivery-pipeline=$Pipeline", "--region=$($Cfg.region)", "--project=$($Cfg.mgmt)", '--sort-by=~createTime', '--limit=50') -AllowFailure
+    @(foreach ($r in @($releases)) {
+        $v = Get-Value (Get-Value $r 'annotations') 'sportapp.io/version'
+        if ($v) { if ($v -notmatch '^v') { "v$v" } else { $v } }
+    })
 }
 
 # Primera creación de Cloud Run: digests de web, bff-web y bff-mobile tomados de
@@ -1173,7 +1220,48 @@ function Invoke-Status($Cfg) {
     if ($stage) { Write-Ok "conexión github: $stage" } else { Write-Info 'conexión github: no existe todavía' }
 }
 
+function Invoke-Images($Cfg) {
+    if (-not (Test-Auth $Cfg)) { throw 'Corrige la autenticación de gcloud.' }
+    $published = Get-PublishedVersions
+    $pipelines = [ordered]@{ backend = 'backend-gke'; frontend = 'frontend-web' }
+    foreach ($key in $published.Keys) {
+        Write-Step "Imágenes del $key"
+        $tags = @($published[$key])
+        if ($tags.Count) { Write-Ok "publicadas: $($tags -join ', ')" } else { Write-Bad 'ninguna versión con imágenes publicadas' }
+        $last = Get-PromotedVersions $Cfg $pipelines[$key] | Select-Object -First 1
+        if ($last) { Write-Info "última release en Cloud Deploy ($($pipelines[$key])): $last" } else { Write-Info "Cloud Deploy ($($pipelines[$key])): sin releases" }
+    }
+    Write-Host ''
+    Write-Info 'Un tag que no aparece no terminó en SUCCESS: .\scripts\sportapp-release.ps1 builds muestra el error.'
+}
+
+# Sin versiones en la línea de comandos: las elige en menús entre las publicadas.
+function Select-PromoteVersions($Cfg) {
+    $published = Get-PublishedVersions
+    if (-not @($published.backend).Count) { throw 'No hay versiones del backend con imágenes publicadas: publica una con .\scripts\sportapp-release.ps1.' }
+    $options = @($published.backend | ForEach-Object { [pscustomobject]@{ Label = $_; Value = $_ } })
+    $script:BackendVersion = Select-Option '¿Qué versión del backend despliegas?' $options
+    $options = @($published.frontend | ForEach-Object { [pscustomobject]@{ Label = $_; Value = $_ } }) + [pscustomobject]@{ Label = 'Ninguna (solo backend)'; Value = '' }
+    $script:FrontendVersion = Select-Option '¿Qué versión del frontend despliegas?' $options
+
+    # Cloud Deploy no repite el nombre de una release: una versión ya promovida necesita sufijo.
+    $again = @(Get-PromotedVersions $Cfg 'backend-gke') -contains $BackendVersion
+    if ($FrontendVersion) { $again = $again -or (@(Get-PromotedVersions $Cfg 'frontend-web') -contains $FrontendVersion) }
+    if ($again -and -not $ReleaseSuffix) {
+        $script:ReleaseSuffix = 'r' + (Get-Random -Minimum 1 -Maximum 100)
+        Write-Note "Esa versión ya tiene release en Cloud Deploy; se usa el sufijo $ReleaseSuffix."
+    }
+    Write-Step 'Despliegue'
+    Write-Info "Backend:  $BackendVersion"
+    Write-Info "Frontend: $(if ($FrontendVersion) { $FrontendVersion } else { 'no se despliega' })"
+    Confirm-Step '¿Ejecutar promote-release con estas versiones?' -Always
+}
+
 function Invoke-Promote($Cfg) {
+    if (-not $BackendVersion -and -not $FrontendVersion) {
+        if (-not (Test-Auth $Cfg)) { throw 'Corrige la autenticación de gcloud.' }
+        Select-PromoteVersions $Cfg
+    }
     if (-not $BackendVersion -and -not $FrontendVersion) { throw 'Indica -BackendVersion y/o -FrontendVersion (tags vX.Y.Z).' }
     if ($FrontendVersion -and -not $BackendVersion) { throw 'El frontend se valida contra un backend: indica también -BackendVersion.' }
     foreach ($v in @(@($BackendVersion, $FrontendVersion) | Where-Object { $_ })) {
@@ -1215,8 +1303,22 @@ function Invoke-Promote($Cfg) {
 
 function Show-Help {
     Get-Help $PSCommandPath -Detailed | Out-Host
-    Write-Host 'Uso: .\scripts\sportapp-gcp.ps1 <check|setup|up|down|status|promote> [-AutoApprove]'
-    Write-Host 'Primero completa platform\.env.ps1 (plantilla .env.example.ps1) y ejecuta check.'
+    Write-Host 'Uso: .\scripts\sportapp-gcp.ps1 [check|setup|up|down|status|images|promote] [-AutoApprove]'
+    Write-Host 'Sin comando muestra un menú. Primero completa platform\.env.ps1 (plantilla .env.example.ps1) y ejecuta check.'
+}
+
+function Select-Command {
+    $menu = [ordered]@{
+        status  = 'Ver qué recursos costosos están encendidos'
+        images  = 'Ver las imágenes publicadas y la última release desplegada'
+        promote = 'Desplegar una release en producción'
+        up      = 'Encender producción (GKE, Cloud SQL y Cloud Run)'
+        down    = 'Apagar producción (destruye GKE, Cloud SQL y Cloud Run)'
+        check   = 'Comprobar configuración, herramientas y autenticación'
+        setup   = 'Preparación completa (primera vez o para continuarla)'
+        help    = 'Ayuda'
+    }
+    Select-Option '¿Qué quieres hacer?' @($menu.Keys | ForEach-Object { [pscustomobject]@{ Label = $menu[$_]; Value = $_ } })
 }
 
 # --- Entrada ------------------------------------------------------------------
@@ -1225,6 +1327,7 @@ function Show-Help {
 $previousEncoding = [Console]::OutputEncoding
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { $previousEncoding = $null }
 try {
+    if (-not $Command) { $Command = Select-Command }
     if ($Command -eq 'help') { Show-Help; return }
     $config = Read-Config
     if ($Command -eq 'check') { Invoke-Check $config; return }
@@ -1235,6 +1338,7 @@ try {
         'up' { Invoke-Up $script:Cfg }
         'down' { Invoke-Down $script:Cfg }
         'status' { Invoke-Status $script:Cfg }
+        'images' { Invoke-Images $script:Cfg }
         'promote' { Invoke-Promote $script:Cfg }
     }
 } catch [ManualStep] {
