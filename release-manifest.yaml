@@ -1,54 +1,15 @@
 # yaml-language-server: $schema=schemas/release-manifest.schema.json
-# Composición publicada de SportApp v0.1.0: versiones, commits, digests y
-# evidencia de Cloud Build que validó scripts/sportapp-release.ps1.
+# Composición candidata de SportApp.
+#
+# `draft` permite registrar los commits fijados por los submódulos antes de
+# que existan releases y artefactos publicados. La release de plataforma
+# (opción Plataforma de scripts/sportapp-release.ps1) completa todos los campos, cambia el
+# estado a `released` y copia este archivo a releases/vX.Y.Z.yaml.
 schemaVersion: 1
-platformVersion: "0.1.0"
-status: "released"
+platformVersion: "0.2.0"
+status: "draft"
 sprint: "Sprint 1"
-acceptedStories:
-  - "HU001"
-  - "HU002"
-  - "HU003"
-  - "HU004"
-  - "HU005"
-  - "HU006"
-  - "HU007"
-  - "HU008"
-  - "HU009"
-  - "HU010"
-  - "HU011"
-  - "HU012"
-  - "HU013"
-  - "HU014"
-  - "HU015"
-  - "HU016"
-  - "HU017"
-  - "HU018"
-  - "HU019"
-  - "HU020"
-  - "HU021"
-  - "HU022"
-  - "HU023"
-  - "HU024"
-  - "HU025"
-  - "HU026"
-  - "HU027"
-  - "HU028"
-  - "HU029"
-  - "HU030"
-  - "HU031"
-  - "HU032"
-  - "HU033"
-  - "HU034"
-  - "HU035"
-  - "HU036"
-  - "HU037"
-  - "HU038"
-  - "HU039"
-  - "HU040"
-  - "HU041"
-  - "HU042"
-  - "HU043"
+acceptedStories: []
 components:
   backend:
     repository: "https://github.com/lfnavarroj1/sport-app-backend"
