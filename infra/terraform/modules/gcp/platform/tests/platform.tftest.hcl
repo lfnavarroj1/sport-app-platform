@@ -239,7 +239,7 @@ run "servicios_y_secretos_de_aplicacion" {
         "COMPLEMENTARY_SERVICES_BASE_URL", "EVENTS_MANAGEMENT_BASE_URL", "CORS_ALLOWED_ORIGINS",
       ]) &&
       toset(keys(output.cloud_run_env["bff-mobile"])) == toset([
-        "APP_ENV", "USERS_MANAGEMENT_BASE_URL", "AFFILIATION_MANAGEMENT_BASE_URL", "TRAINING_MANAGEMENT_BASE_URL", "EVENTS_MANAGEMENT_BASE_URL",
+        "APP_ENV", "USERS_MANAGEMENT_BASE_URL", "AFFILIATION_MANAGEMENT_BASE_URL", "TRAINING_MANAGEMENT_BASE_URL", "COMPLEMENTARY_SERVICES_BASE_URL", "EVENTS_MANAGEMENT_BASE_URL",
       ])
     )
     error_message = "bff-web y bff-mobile reciben las URL internas de las APIs que exige su configuración."
