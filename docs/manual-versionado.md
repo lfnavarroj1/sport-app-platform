@@ -185,7 +185,7 @@ Una HU suma velocidad únicamente al llegar a `Aceptada`. Código parcial, PR ab
 9. copiar el manifiesto a `releases/vX.Y.Z.yaml`;
 10. publicar notas de release y actualizar Project y wiki.
 
-Los pasos 3 y 4 los automatizan [`sportapp-release.ps1`](../scripts/sportapp-release.md) y [`sportapp-release-movil.ps1`](../scripts/sportapp-release-movil.md). Los pasos 5, 8 y 9 y las notas del paso 10 los hace [`sportapp-release-plataforma.ps1`](../scripts/sportapp-release-plataforma.md) a partir de `develop`, después de la aceptación del paso 7.
+Todos los pasos automatizados los hace [`sportapp-release.ps1`](../scripts/sportapp-release.md). Los pasos 3 y 4 son sus opciones de componentes (backend, frontend y móvil). Los pasos 5, 8 y 9 y las notas del paso 10 son su opción Plataforma, que parte de `develop` después de la aceptación del paso 7.
 
 ## Manifiesto de la versión
 

@@ -51,18 +51,18 @@ Un push de una rama de trabajo nunca fusiona ni despliega por sí mismo.
 
 ## Cómo lanzar una release completa
 
-Se hace desde la estación del operador, en este orden:
+Se hace desde la estación del operador, en este orden (detalle paso a paso en el [orden de los release](../scripts/orden-de-release.md)):
 
-1. publicar los componentes que cambiaron: [`sportapp-release.ps1`](../scripts/sportapp-release.md) (backend y frontend, con imágenes por digest) y [`sportapp-release-movil.ps1`](../scripts/sportapp-release-movil.md) (APK con checksum);
+1. publicar los componentes que cambiaron con [`sportapp-release.ps1`](../scripts/sportapp-release.md), eligiendo cada uno en su menú: backend y frontend, con imágenes por digest, y móvil, con APK y checksum;
 2. fusionar en `develop` de la plataforma el PR que mueve los submódulos y `release-manifest.yaml` a esos tags;
 3. aceptar las HU en la revisión del sprint;
 4. publicar la versión de plataforma:
 
 ```powershell
-.\scripts\sportapp-release-plataforma.ps1 release -Stories HU001,HU010
+.\scripts\sportapp-release.ps1 release -Target platform -Stories HU001,HU010
 ```
 
-[`sportapp-release-plataforma.ps1`](../scripts/sportapp-release-plataforma.md) hace lo siguiente:
+La opción Plataforma de [`sportapp-release.ps1`](../scripts/sportapp-release.md#7-versión-de-plataforma) hace lo siguiente:
 
 1. crea `release/vX.Y.Z` desde `develop`;
 2. comprueba que cada tag sea el commit de su submódulo;
@@ -133,7 +133,7 @@ Contrato:   v1.0.0 · compatible
 | Backend | `ci.yml`, `release-backend.yml` (`deliver-development.yml` debe retirarse o transformarse) |
 | Frontend | `ci-web.yml`, `release-web.yml` (no se crea entrega automática de development) |
 | Móvil | `ci-mobile.yml`, `release-mobile.yml` |
-| Plataforma | `validate-platform.yml` (implementado: Markdown, YAML, JSON, scripts, copias de `releases/` y Terraform con mocks); `test-platform-release.yml` (pendiente). La preparación de la release no es un workflow: la hace el operador con [`sportapp-release-plataforma.ps1`](../scripts/sportapp-release-plataforma.md). La promoción y el rollback **no** son workflows de GitHub: son el trigger interno `promote-release` y Cloud Deploy con aprobación ([preparación de GCP, secciones 10 a 14](preparacion-terraform-gcp.md#10-configurar-construcción-y-publicación)) |
+| Plataforma | `validate-platform.yml` (implementado: Markdown, YAML, JSON, scripts, copias de `releases/` y Terraform con mocks); `test-platform-release.yml` (pendiente). La preparación de la release no es un workflow: la hace el operador con [`sportapp-release.ps1`](../scripts/sportapp-release.md#7-versión-de-plataforma). La promoción y el rollback **no** son workflows de GitHub: son el trigger interno `promote-release` y Cloud Deploy con aprobación ([preparación de GCP, secciones 10 a 14](preparacion-terraform-gcp.md#10-configurar-construcción-y-publicación)) |
 
 ## Condiciones previas de activación
 

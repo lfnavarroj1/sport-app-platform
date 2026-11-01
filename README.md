@@ -105,10 +105,10 @@ flowchart LR
 
 **Punto final:** `main` contiene y etiqueta la composición liberada, mientras `develop` conserva tanto las historias entregadas como las correcciones hechas durante la release. Solo entonces termina el flujo normal.
 
-Los pasos 10 a 14 se ejecutan con los scripts de release desde la estación del operador:
-- [`sportapp-release.ps1`](scripts/sportapp-release.md): backend y frontend;
-- [`sportapp-release-movil.ps1`](scripts/sportapp-release-movil.md): móvil;
-- [`sportapp-release-plataforma.ps1`](scripts/sportapp-release-plataforma.md): versión de plataforma, con `release/vX.Y.Z`, manifiesto `released`, tag y retorno a `develop`.
+Los pasos 10 a 14 se ejecutan desde la estación del operador con [`sportapp-release.ps1`](scripts/sportapp-release.md). El script muestra un menú para elegir qué se publica:
+- backend, frontend o los dos;
+- móvil;
+- versión de plataforma, con `release/vX.Y.Z`, manifiesto `released`, tag y retorno a `develop`.
 
 Ejemplo de los pasos 2 y 3 cuando una misma historia afecta varios repositorios:
 
@@ -143,7 +143,8 @@ La especificación operativa ampliada está en el [manual de versionado](docs/ma
 - El [GitHub Project SportApp Platform](https://github.com/users/lfnavarroj1/projects/4) administra el backlog vigente, los sprints, estados, responsables y evidencia: 40 HU (HU001–HU040), 100 PHU y 100 puntos de valor. Cada HU se construye con tareas técnicas `T-HUxxx-BE`/`WEB`/`MOB`/`PLAT` creadas justo a tiempo, sin PHU ni valor propios; solo una HU aceptada suma velocidad y valor ([reglas](project/README.md#historias-y-tareas-técnicas)).
 - El [manual de versiones](docs/manual-versionado.md) define la relación entre sprint, HU, ramas, versiones y releases.
 - El [esquema de CI y release](docs/esquema-ci-y-release.md) explica qué ocurre con cada push y cómo se libera una composición compatible.
-- Las releases se publican con [`sportapp-release.ps1`](scripts/sportapp-release.md) (backend y frontend), [`sportapp-release-movil.ps1`](scripts/sportapp-release-movil.md) (móvil) y [`sportapp-release-plataforma.ps1`](scripts/sportapp-release-plataforma.md) (versión de plataforma).
+- El [orden de los release](scripts/orden-de-release.md) indica en qué secuencia se ejecutan los scripts al cerrar un sprint.
+- Las releases se publican con [`sportapp-release.ps1`](scripts/sportapp-release.md), que pregunta en un menú si se publica backend, frontend, móvil o la versión de plataforma.
 - La preparación está separada por plataforma: la [guía local](docs/preparacion-terraform-local.md) deja listo Kubernetes kubeadm de Docker Desktop y la [guía de GCP](docs/preparacion-terraform-gcp.md) configura proyectos, Terraform manual, Cloud Build interno y Cloud Deploy con aprobación, sin entregar identidad GCP a GitHub.
 - La [guía de Terraform](infra/terraform/README.md) explica paso a paso el desarrollo local, la producción en GCP y la actualización de backend y frontend.
 - La [arquitectura Terraform](docs/arquitectura-terraform.md) define su ubicación, clonación, frontera con los componentes, pruebas en local/GCP y ciclo de encendido, suspensión y destrucción para controlar costos.
