@@ -59,7 +59,7 @@ Se hace desde la estación del operador, en este orden (detalle paso a paso en e
 4. publicar la versión de plataforma:
 
 ```powershell
-.\scripts\sportapp-release.ps1 release -Target platform -Stories HU001,HU010
+.\scripts\sportapp-release.ps1 release -Target platform   # HU tomadas de los commits de los componentes
 ```
 
 La opción Plataforma de [`sportapp-release.ps1`](../scripts/sportapp-release.md#7-versión-de-plataforma) hace lo siguiente:
