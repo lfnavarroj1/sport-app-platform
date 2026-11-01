@@ -99,7 +99,7 @@ locals {
   }
   bff_upstreams = {
     bff-web    = keys(local.gke_internal_apis)
-    bff-mobile = ["users-management", "affiliation-management", "training-management", "events-management"]
+    bff-mobile = ["users-management", "affiliation-management", "training-management", "complementary-services", "events-management"]
   }
 
   # Servicios de Cloud Run. El puerto web es provisional hasta que exista su imagen.
