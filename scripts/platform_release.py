@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Composición de una release de sport-app-platform (lo usa sportapp-release-plataforma.ps1).
+"""Composición de una release de sport-app-platform (lo usa la opción Plataforma de sportapp-release.ps1).
 
 La plataforma no construye nada: fija una combinación de componentes ya
 publicados. Este módulo, a partir del manifiesto candidato de develop y de la
@@ -46,14 +46,14 @@ DRAFT_HEADER = """\
 #
 # `draft` permite registrar los commits fijados por los submódulos antes de
 # que existan releases y artefactos publicados. La release de plataforma
-# (scripts/sportapp-release-plataforma.ps1) completa todos los campos, cambia el
+# (opción Plataforma de scripts/sportapp-release.ps1) completa todos los campos, cambia el
 # estado a `released` y copia este archivo a releases/vX.Y.Z.yaml.
 """
 
 RELEASED_HEADER = """\
 # yaml-language-server: $schema=schemas/release-manifest.schema.json
 # Composición publicada de SportApp v{version}: versiones, commits, digests y
-# evidencia de Cloud Build que validó scripts/sportapp-release-plataforma.ps1.
+# evidencia de Cloud Build que validó scripts/sportapp-release.ps1.
 """
 
 COPY_HEADER = """\
@@ -98,7 +98,7 @@ def component_refs(draft: Mapping[str, Any]) -> dict[str, str | None]:
 
 
 def version_code(tag: str) -> int:
-    """Mismo esquema que sportapp-release-movil.ps1: MAJOR*1000000 + MINOR*1000 + PATCH."""
+    """Mismo esquema que sportapp-release.ps1: MAJOR*1000000 + MINOR*1000 + PATCH."""
     major, minor, patch = (int(n) for n in pr.check_tag(tag).split("-", 1)[0].split("."))
     _require(minor < 1000 and patch < 1000, f"{tag} no cabe en el esquema de versionCode")
     return major * 1_000_000 + minor * 1_000 + patch
@@ -239,7 +239,7 @@ def _render(value: Any, indent: int) -> list[str]:
 
 
 def render_manifest(manifest: Mapping[str, Any], header: str) -> str:
-    """YAML con la misma forma que edita sportapp-release-common.ps1 (componentes a 4 espacios)."""
+    """YAML con la misma forma que edita sportapp-release.ps1 (componentes a 4 espacios)."""
     return header + "\n".join(_render(manifest, 0)) + "\n"
 
 

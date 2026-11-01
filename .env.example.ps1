@@ -56,7 +56,7 @@ $deployToolsImage = "gcr.io/google.com/cloudsdktool/google-cloud-cli:588.0.0@sha
 # $initialBackendVersion = "v1.0.0"
 # $initialFrontendVersion = "v1.0.0"
 
-# --- Releases (scripts/sportapp-release.ps1 y sportapp-release-movil.ps1) ----
+# --- Releases (scripts/sportapp-release.ps1) ---------------------------------
 
 # Dueño de los repositorios en GitHub (por defecto lfnavarroj1).
 # $githubOwner = "lfnavarroj1"
@@ -67,7 +67,7 @@ $deployToolsImage = "gcr.io/google.com/cloudsdktool/google-cloud-cli:588.0.0@sha
 # $releaseReviewer = "companero-github"
 
 # Almacén de claves del APK de producción, fuera del repositorio. Lo crea
-# ".\scripts\sportapp-release-movil.ps1 keystore". Las contraseñas se piden al compilar.
+# ".\scripts\sportapp-release.ps1 keystore". Las contraseñas se piden al compilar.
 # $mobileKeystoreFile = "$env:USERPROFILE\.sportapp\sportapp-release.jks"
 # $mobileKeyAlias = "sportapp"
 
