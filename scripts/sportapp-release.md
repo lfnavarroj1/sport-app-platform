@@ -237,7 +237,7 @@ flowchart LR
 | Backend y frontend publicados, con imágenes | opciones 1 a 3 (sección 5); Cloud Build en `SUCCESS` |
 | Móvil publicado, con APK | opción 4 (sección 6); la release tiene `SHA256SUMS` |
 | Submódulos y manifiesto de `develop` en esos tags | la fase *Plataforma* de cada release (o `submodules`) y el PR de esos archivos hacia `develop` |
-| HU aceptadas | la revisión del sprint |
+| HU de la versión | lo integrado en `develop` se considera aceptado; el script las toma de los commits |
 
 Para ver el manifiesto candidato de `develop`:
 
@@ -248,10 +248,10 @@ Para ver el manifiesto candidato de `develop`:
 ### Publicar
 
 ```powershell
-.\scripts\sportapp-release.ps1 release -Target platform -Stories HU001,HU010
+.\scripts\sportapp-release.ps1 release -Target platform
 ```
 
-Si eliges la opción en el menú y no pasas `-Stories`, el script pide las HU aceptadas.
+Sin `-Stories`, el script toma como HU de la versión los identificadores `HUxxx` de los mensajes de commit de backend, frontend y móvil, desde las versiones de la release de plataforma anterior hasta las nuevas (todo el historial en la primera release). Lo integrado en `develop` se considera aceptado. La lista aparece en el plan antes de confirmar. Con `-Stories HU001,HU010` se fija a mano.
 
 | Fase | Qué pasa |
 | --- | --- |
@@ -376,7 +376,7 @@ Para hacerlo por separado, por ejemplo si usaste `-SkipPlatform` o publicaste un
 | `-BackendVersion`, `-FrontendVersion`, `-MobileVersion` | `release`, `builds`, `apk`, `submodules` | versión explícita `vX.Y.Z` del componente |
 | `-PlatformVersion vX.Y.Z` | plataforma | versión explícita de la plataforma |
 | `-SystemVersion vX.Y.Z` | componentes | versión del sistema en lugar de la de `release-manifest.yaml` |
-| `-Stories HU001,HU010` | plataforma | HU aceptadas en la revisión del sprint; si faltan, se piden |
+| `-Stories HU001,HU010` | plataforma | fija las HU de la versión; sin la opción, se toman de los commits de los componentes |
 | `-Sprint "Sprint 2"` | plataforma | sprint de la versión; por defecto el del manifiesto |
 | `-SkipCloudBuild` | backend y frontend | no espera Cloud Build; se puede consultar después con `builds` |
 | `-SkipApk` | móvil | no compila el APK; se puede hacer después con `apk` |

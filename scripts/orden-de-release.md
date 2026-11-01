@@ -36,7 +36,7 @@ flowchart LR
 - **Los componentes van primero** porque la plataforma no construye nada: solo fija tags ya publicados. Su script lee la evidencia de Cloud Build de backend y frontend y el `SHA256SUMS` del APK; si no existen, se detiene.
 - **Backend y frontend antes que el móvil** es una convención, no una dependencia: el móvil no pasa por Cloud Build ni Cloud Deploy y se puede publicar en cualquier momento. Sí debe estar publicado antes del paso 5.
 - **El PR de submódulos debe estar fusionado en `develop`** antes del paso 5, porque la release de plataforma parte de `develop` y comprueba que cada tag sea el commit de su submódulo.
-- **La revisión del sprint va antes de la plataforma** porque `-Stories` es obligatorio: solo entran las HU aceptadas.
+- **La revisión del sprint va antes de la plataforma** porque fija qué entra: lo integrado en `develop` se considera aceptado, y el script toma las HU de los commits de los componentes.
 - **El despliegue va al final** y es independiente: `promote` usa las versiones de los componentes. La versión de plataforma documenta qué combinación se aceptó.
 
 ## 2. Preparación única
@@ -103,12 +103,12 @@ Fusiónalo cuando `validate-platform` esté en verde. Para revisar el candidato:
 
 ### Paso 4. Revisión del sprint
 
-Ejecuta contratos, integración y E2E sobre esa combinación y acepta las HU. Anota sus identificadores: se pasan en el paso 5.
+Ejecuta contratos, integración y E2E sobre esa combinación. Lo integrado en `develop` se considera aceptado: en el paso 5 el script toma las HU de los commits de los componentes.
 
 ### Paso 5. Versión de plataforma
 
 ```powershell
-.\scripts\sportapp-release.ps1 release -Target platform -Stories HU001,HU010
+.\scripts\sportapp-release.ps1 release -Target platform
 ```
 
 Crea `release/vX.Y.Z` desde `develop`, completa el manifiesto en `released` con la evidencia, lo copia a `releases/vX.Y.Z.yaml`, abre el PR hacia `main`, pide tu aprobación, crea el tag y la GitHub Release y abre el ciclo siguiente en `develop` con otro PR.

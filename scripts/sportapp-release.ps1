@@ -76,7 +76,7 @@ param(
     # por defecto platformVersion de release-manifest.yaml.
     [string]$SystemVersion,
 
-    # Plataforma: HU aceptadas en la revisión del sprint (se piden si faltan).
+    # Plataforma: HU de la versión; sin -Stories, las de los commits de los componentes.
     [string[]]$Stories,
 
     # Plataforma: sprint de la versión; por defecto el de release-manifest.yaml en develop.
@@ -1254,6 +1254,22 @@ function Invoke-PlatformStatus {
     Remove-Item -LiteralPath $file -ErrorAction SilentlyContinue
 }
 
+# HU de la versión: lo integrado en develop se considera aceptado, así que son los
+# HUxxx de los mensajes de commit de cada componente entre la versión de la release
+# de plataforma anterior y la nueva (todo el historial en la primera).
+function Get-DevelopedStories($Refs, [hashtable]$Previous) {
+    $ids = @{}
+    foreach ($key in 'backend', 'frontend', 'mobile') {
+        $path = Join-Path $PlatformRoot "components\$key"
+        [void](Invoke-Capture git @('-C', $path, 'fetch', '--quiet', '--tags', 'origin') -AllowFailure)
+        $range = if ($Previous[$key]) { "$($Previous[$key])..$($Refs.$key)" } else { $Refs.$key }
+        $log = Invoke-Capture git @('-C', $path, 'log', '--format=%s%n%b', $range) -AllowFailure
+        if ($log.ExitCode -ne 0) { throw "No se pudo leer el historial de components/$key ($range): $($log.Error)" }
+        foreach ($m in [regex]::Matches($log.Output, '(?i)\bHU(\d{3})\b')) { $ids["HU$($m.Groups[1].Value)"] = $true }
+    }
+    @($ids.Keys | Sort-Object)
+}
+
 function Invoke-PlatformRelease {
     if (-not (Get-Login)) { throw 'gh no tiene sesión: gh auth login' }
     $repo = Get-RepoName 'platform'
@@ -1261,9 +1277,7 @@ function Invoke-PlatformRelease {
     $gcp = Test-GcpConfig
     if ($gcp) { throw "$gcp (se necesita para leer la evidencia de Cloud Build)." }
     if (-not (Test-PythonDeps)) { throw 'Faltan Python, pyyaml o jsonschema: ejecuta check.' }
-    if (-not $Stories) { $Stories = @(Read-Host 'HU aceptadas en la revisión del sprint, separadas por comas (por ejemplo HU001,HU010)') }
     $storyList = @($Stories | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().ToUpper() } | Where-Object { $_ })
-    if (-not $storyList.Count) { throw 'Indica las HU aceptadas en la revisión del sprint: -Stories HU001,HU010' }
 
     # Versión: explícita o la siguiente al último tag estable.
     $tags = Get-Tags $repo
@@ -1288,6 +1302,18 @@ function Invoke-PlatformRelease {
         $sprintName = if ($Sprint) { $Sprint } else { Get-ManifestScalar $manifest 'sprint' }
         $refs = Invoke-Composer @('refs', '--draft', $manifest) | ConvertFrom-Json
         $links = Get-Gitlinks $work
+        if (-not $storyList.Count) {
+            $previous = @{}
+            if ($latest) {
+                $file = Join-Path $env:TEMP "sportapp-manifest-$latest.yaml"
+                Write-TextFile $file (Invoke-Capture git @('-C', $PlatformRoot, 'show', "${latest}:release-manifest.yaml")).Output
+                $old = Invoke-Composer @('refs', '--draft', $file) | ConvertFrom-Json
+                Remove-Item -LiteralPath $file -ErrorAction SilentlyContinue
+                foreach ($key in 'backend', 'frontend', 'mobile') { $previous[$key] = $old.$key }
+            }
+            $storyList = Get-DevelopedStories $refs $previous
+            if (-not $storyList.Count) { throw 'Los commits de los componentes no mencionan ninguna HU desde la release anterior; indícalas con -Stories HU001,HU010.' }
+        }
 
         Write-Step "Plan de la release de plataforma $version"
         Write-Info "Base: $base   Sprint: $sprintName   HU: $($storyList -join ', ')"
