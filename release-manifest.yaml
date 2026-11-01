@@ -27,8 +27,9 @@ components:
     artifact: null
   mobile:
     repository: https://github.com/lfnavarroj1/sport-app-movil
-    version: null
-    versionCode: null
-    ref: null
-    commit: de526b7af3b06f188f5239ace15bc64727750cdc
-    artifact: null
+    version: "0.2.0"
+    versionCode: 2000
+    ref: "v0.2.0"
+    commit: "67dbbdc8b4af261d087d37d6c02a3eb82a76cfda"
+    artifact:
+      sha256: "455f981fcf48c3ae18eb3ff219e22579dfe50d66546a53715247cdd7b61c7a60"
