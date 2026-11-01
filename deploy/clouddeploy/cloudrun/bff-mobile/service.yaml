@@ -41,6 +41,8 @@ spec:
               value: http://affiliation-management # from-param: ${env_AFFILIATION_MANAGEMENT_BASE_URL}
             - name: TRAINING_MANAGEMENT_BASE_URL
               value: http://training-management # from-param: ${env_TRAINING_MANAGEMENT_BASE_URL}
+            - name: COMPLEMENTARY_SERVICES_BASE_URL
+              value: http://complementary-services # from-param: ${env_COMPLEMENTARY_SERVICES_BASE_URL}
             - name: EVENTS_MANAGEMENT_BASE_URL
               value: http://events-management # from-param: ${env_EVENTS_MANAGEMENT_BASE_URL}
             - name: LOG_LEVEL

@@ -41,7 +41,7 @@ override_data {
           vpc_network     = "sportapp-prod-vpc", vpc_subnetwork = "sportapp-prod-serverless"
           env = {
             APP_ENV                      = "production", LOG_LEVEL = "INFO", USERS_MANAGEMENT_BASE_URL = "http://10.10.0.10", AFFILIATION_MANAGEMENT_BASE_URL = "http://10.10.0.11"
-            TRAINING_MANAGEMENT_BASE_URL = "http://10.10.0.12", EVENTS_MANAGEMENT_BASE_URL = "http://10.10.0.14"
+            TRAINING_MANAGEMENT_BASE_URL = "http://10.10.0.12", COMPLEMENTARY_SERVICES_BASE_URL = "http://10.10.0.13", EVENTS_MANAGEMENT_BASE_URL = "http://10.10.0.14"
           }
           secret_env = {}
           uri        = "https://bff-mobile-1.us-central1.run.app"
@@ -353,7 +353,7 @@ run "rechaza_parametros_distintos_de_la_plantilla" {
             vpc_network     = "sportapp-prod-vpc", vpc_subnetwork = "sportapp-prod-serverless"
             env = {
               APP_ENV                      = "production", LOG_LEVEL = "INFO", USERS_MANAGEMENT_BASE_URL = "http://10.10.0.10", AFFILIATION_MANAGEMENT_BASE_URL = "http://10.10.0.11"
-              TRAINING_MANAGEMENT_BASE_URL = "http://10.10.0.12", EVENTS_MANAGEMENT_BASE_URL = "http://10.10.0.14"
+              TRAINING_MANAGEMENT_BASE_URL = "http://10.10.0.12", COMPLEMENTARY_SERVICES_BASE_URL = "http://10.10.0.13", EVENTS_MANAGEMENT_BASE_URL = "http://10.10.0.14"
             }
             secret_env = {}
             uri        = "https://bff-mobile-1.us-central1.run.app"
