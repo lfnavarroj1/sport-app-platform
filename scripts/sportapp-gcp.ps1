@@ -558,6 +558,28 @@ function Save-CloudRunImages([hashtable]$Images) {
     Write-TextFile $CloudRunImagesFile $body
 }
 
+# Cloud Deploy cambia las imágenes de Cloud Run sin pasar por Terraform; si el
+# archivo conserva digests anteriores, cada apply de production revierte los
+# servicios. Antes de planificar se guardan los digests que están corriendo.
+function Sync-CloudRunImages($Cfg) {
+    $services = Invoke-GcloudJson @('run', 'services', 'list', "--project=$($Cfg.production)", "--region=$($Cfg.region)") -AllowFailure
+    $images = Get-CloudRunImages
+    $changed = @()
+    foreach ($s in @($services)) {
+        if ($null -eq $s) { continue }
+        $name = Get-Value (Get-Value $s 'metadata') 'name'
+        $containers = Get-Value (Get-Value (Get-Value (Get-Value $s 'spec') 'template') 'spec') 'containers'
+        $image = Get-Value (@($containers)[0]) 'image'
+        if (@('web', 'bff-web', 'bff-mobile') -contains $name -and "$image" -match '@sha256:[0-9a-f]{64}$') {
+            if ($images[$name] -ne $image) { $changed += $name }
+            $images[$name] = $image
+        }
+    }
+    Save-CloudRunImages $images
+    if ($changed) { Write-Ok "cloud-run-images.auto.tfvars.json actualizado con los digests en ejecución: $($changed -join ', ')" }
+    else { Write-Ok 'cloud-run-images.auto.tfvars.json coincide con Cloud Run' }
+}
+
 # --- Terraform ----------------------------------------------------------------
 
 function Initialize-Root([string]$Key) {
@@ -829,8 +851,9 @@ function Get-Prepared($Cfg) {
     [pscustomobject]@{ Boot = $boot; ConnectionReady = $ready }
 }
 
-function Invoke-Production([string]$Name = 'production') {
+function Invoke-Production($Cfg, [string]$Name = 'production') {
     Initialize-Root 'production'
+    Sync-CloudRunImages $Cfg
     [void](Invoke-TerraformStep -Key production -Name $Name -Purpose 'Infraestructura de producción')
     $out = Get-RootOutputs 'production'
     if (-not (Get-Value $out 'gke')) { throw 'production no tiene salidas después del apply; revisa el error anterior.' }
@@ -1067,7 +1090,7 @@ function Invoke-Setup($Cfg) {
 
     # Fase operativa (sección 12).
     $prepared = Get-Prepared $Cfg
-    Invoke-Production
+    Invoke-Production $Cfg
     Initialize-AppSecrets $Cfg
     Invoke-Workloads
 
@@ -1110,7 +1133,7 @@ function Invoke-Setup($Cfg) {
                 'y ejecuta de nuevo: .\scripts\sportapp-gcp.ps1 setup')
         }
         Save-CloudRunImages $images
-        Invoke-Production 'production-cloud-run'
+        Invoke-Production $Cfg 'production-cloud-run'
         Invoke-Delivery $Cfg $prepared 'delivery-cloud-run'
     }
 
@@ -1124,7 +1147,7 @@ function Invoke-Up($Cfg) {
     if (-not (Test-Tools -Quiet)) { throw 'Instala las herramientas que faltan.' }
     if (-not (Test-Auth $Cfg -Interactive)) { throw 'Corrige la autenticación de gcloud.' }
     $prepared = Get-Prepared $Cfg
-    Invoke-Production 'up'
+    Invoke-Production $Cfg 'up'
     Initialize-AppSecrets $Cfg
     Invoke-Workloads 'up'
     if ($prepared.ConnectionReady) { Invoke-Delivery $Cfg $prepared 'delivery-up' }
@@ -1160,17 +1183,7 @@ function Invoke-Down($Cfg) {
     [void](Invoke-TerraformStep -Key production -Name 'down-scope' -Purpose 'Comprobar el alcance de la destrucción' -Destroy -PlanArgs ($protection + $targets) -DeletablePatterns $CostlyDeletable -PlanOnly)
 
     # up recrea Cloud Run con los últimos digests desplegados por Cloud Deploy.
-    $services = Invoke-GcloudJson @('run', 'services', 'list', "--project=$($Cfg.production)", "--region=$($Cfg.region)") -AllowFailure
-    $images = Get-CloudRunImages
-    foreach ($s in @($services)) {
-        if ($null -eq $s) { continue }
-        $name = Get-Value (Get-Value $s 'metadata') 'name'
-        $containers = Get-Value (Get-Value (Get-Value (Get-Value $s 'spec') 'template') 'spec') 'containers'
-        $image = Get-Value (@($containers)[0]) 'image'
-        if (@('web', 'bff-web', 'bff-mobile') -contains $name -and "$image" -match '@sha256:[0-9a-f]{64}$') { $images[$name] = $image }
-    }
-    Save-CloudRunImages $images
-    Write-Ok 'digests actuales de Cloud Run guardados en cloud-run-images.auto.tfvars.json'
+    Sync-CloudRunImages $Cfg
 
     # 2. Objetos de GKE: al borrar los Services se liberan los balanceadores internos.
     $clusters = (Invoke-Capture gcloud @('container', 'clusters', 'list', "--project=$($Cfg.production)", '--format=value(name)', '--quiet') -AllowFailure).Output -split "`n"
