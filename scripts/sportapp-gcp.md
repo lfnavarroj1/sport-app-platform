@@ -116,6 +116,8 @@ Cuando todo está bien termina con `Todo listo`.
 .\scripts\sportapp-gcp.ps1 <comando> [opciones]
 ```
 
+Sin comando, el script muestra un menú con todos los comandos. Las opciones de la tabla siguiente son para ejecutarlo sin menú.
+
 | Comando | Qué hace | Cuándo usarlo |
 | --- | --- | --- |
 | `check` | valida sin cambiar nada | antes de cualquier otro comando |
@@ -123,7 +125,8 @@ Cuando todo está bien termina con `Todo listo`.
 | `down` | destruye GKE, Cloud SQL y Cloud Run | al dejar de usar producción por días o semanas |
 | `up` | recrea lo que destruyó `down` | al volver a usar producción |
 | `status` | muestra qué recursos costosos existen | para confirmar que no quedó nada encendido |
-| `promote` | ejecuta el trigger `promote-release` | para desplegar una release (sección 6) |
+| `images` | lista las versiones de backend y frontend con imágenes publicadas y la última release en Cloud Deploy | antes de `promote` |
+| `promote` | ejecuta el trigger `promote-release`; sin versiones, las pregunta en un menú | para desplegar una release (sección 6) |
 | `help` | muestra la ayuda | — |
 
 | Opción | Comandos | Efecto |
@@ -248,6 +251,7 @@ Copia el comando que imprime `up`. El sufijo evita repetir el nombre de una rele
 .\scripts\sportapp-gcp.ps1 promote -BackendVersion v1.2.0 -FrontendVersion v0.9.0
 ```
 
+- **Sin versiones** (`promote` solo o la opción del menú): el script ofrece solo las versiones cuyo build de Cloud Build terminó en `SUCCESS`, primero la más reciente. El frontend se puede omitir. Si la versión elegida ya tiene release en Cloud Deploy, agrega un sufijo, y antes de ejecutar pide confirmación.
 - **Orden:** con ambas versiones, el script espera a que termine el promotor del backend antes de lanzar el del frontend, que se valida contra ese backend.
 - **Aprobación:** el promotor solo crea releases; ningún rollout avanza sin aprobación humana. Apruébalos en Cloud Deploy en este orden:
   1. `production-gke-migrations`;

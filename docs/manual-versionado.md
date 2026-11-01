@@ -185,6 +185,8 @@ Una HU suma velocidad únicamente al llegar a `Aceptada`. Código parcial, PR ab
 9. copiar el manifiesto a `releases/vX.Y.Z.yaml`;
 10. publicar notas de release y actualizar Project y wiki.
 
+Todos los pasos automatizados los hace [`sportapp-release.ps1`](../scripts/sportapp-release.md). Los pasos 3 y 4 son sus opciones de componentes (backend, frontend y móvil). Los pasos 5, 8 y 9 y las notas del paso 10 son su opción Plataforma, que parte de `develop` después de la aceptación del paso 7.
+
 ## Manifiesto de la versión
 
 Cada versión de plataforma registra como mínimo:
@@ -249,7 +251,7 @@ Un defecto urgente usa:
 hotfix/vX.Y.Z-descripcion
 ```
 
-El componente afectado incrementa `PATCH`. La plataforma también incrementa `PATCH`, actualiza el manifiesto, repite los controles aplicables y reconcilia el cambio con la rama de integración. No se sustituye un digest bajo una etiqueta existente.
+El componente afectado incrementa `PATCH`. En backend, frontend y móvil lo publica el comando `hotfix` de [`sportapp-release.ps1`](../scripts/sportapp-release.md#hotfix), que usa la rama `hotfix/vX.Y.Z[-descripcion]` y abre el retorno a `develop`. La plataforma también incrementa `PATCH`, actualiza el manifiesto, repite los controles aplicables y reconcilia el cambio con la rama de integración. No se sustituye un digest bajo una etiqueta existente.
 
 ## Campos requeridos en GitHub Projects
 
@@ -290,7 +292,7 @@ Cada release de plataforma debe listar:
 | Proponer incremento del componente | equipo propietario del repositorio |
 | Verificar compatibilidad integrada | responsables de `sport-app-platform` |
 | Aprobar versión de sprint | responsable de producto y responsable técnico |
-| Crear tag y notas | workflow autorizado de release |
+| Crear tag y notas | operador con los scripts de release (`scripts/sportapp-release*.ps1`), siempre después de la aprobación humana del PR |
 | Construir y publicar por digest | Cloud Build en GCP, con la cuenta del componente (`release-backend`, `release-frontend`) |
 | Crear releases de Cloud Deploy | operador mediante el trigger interno `promote-release` (cuenta `release-promoter`) |
 | Aprobar el rollout productivo | aprobadores humanos (`approvers`); nunca una automatización |
