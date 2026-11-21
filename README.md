@@ -105,7 +105,7 @@ flowchart LR
 
 **Punto final:** `main` contiene y etiqueta la composición liberada, mientras `develop` conserva tanto las historias entregadas como las correcciones hechas durante la release. Solo entonces termina el flujo normal.
 
-Un solo menú, [`scripts/sportapp.ps1`](docs/guia-menu-sportapp.md), reúne el despliegue local, el despliegue en GCP, los releases, Strava y la tableta, y delega en los scripts siguientes.
+Un solo menú, [`scripts/sportapp.ps1`](docs/guia-menu-sportapp.md), reúne el asistente de Strava, los releases y el despliegue (local o GCP), y delega en los scripts siguientes.
 
 Los pasos 10 a 14 se ejecutan desde la estación del operador con [`sportapp-release.ps1`](scripts/sportapp-release.md). El script muestra un menú para elegir qué se publica:
 - backend, frontend o los dos;
