@@ -117,3 +117,81 @@ run "rechaza_ruta_de_frontend_inexistente" {
 
   expect_failures = [data.kustomization_overlay.sportapp]
 }
+
+# HU031 (ADR-042): base `terceros`, configuración del callback y componente de Strava.
+run "configuracion_de_hu031" {
+  command = plan
+
+  variables {
+    deploy_frontend = false
+  }
+
+  assert {
+    condition = alltrue([
+      for literal in [
+        "STRAVA_REDIRECT_URI=http://localhost:18081/v1/integrations/strava/callback",
+        "STRAVA_CONSENT_VERSION=local-dev",
+      ] : contains(data.kustomization_overlay.sportapp.config_map_generator[0].literals, literal)
+    ])
+    error_message = "sportapp-runtime publica STRAVA_REDIRECT_URI y STRAVA_CONSENT_VERSION."
+  }
+
+  assert {
+    condition     = length(data.kustomization_overlay.sportapp.components) == 0
+    error_message = "Por defecto no se incluye el componente strava-integration: requiere el Secret sportapp-third-party."
+  }
+
+  assert {
+    condition = (
+      output.strava.integration_active == false &&
+      output.strava.callback_domain == "localhost" &&
+      output.strava.secret == "sportapp-third-party" &&
+      output.strava.subscription == "entrenamientos-actividades-externas-v1" &&
+      output.strava.dead_letter_topic == "sportapp.terceros.actividades.dlq"
+    )
+    error_message = "La salida strava documenta el callback y los recursos de HU031 sin secretos."
+  }
+}
+
+run "incluye_el_componente_strava_integration" {
+  command = plan
+
+  variables {
+    deploy_frontend            = false
+    strava_integration_enabled = true
+  }
+
+  assert {
+    condition     = data.kustomization_overlay.sportapp.components == tolist(["../../../../../backend/deploy/k8s/components/strava-integration"])
+    error_message = "Con strava_integration_enabled se incluye el componente del backend."
+  }
+
+  assert {
+    condition     = output.strava.integration_active == true
+    error_message = "La salida strava indica que la integración está activa."
+  }
+}
+
+run "strava_exige_backend" {
+  command = plan
+
+  variables {
+    deploy_backend             = false
+    deploy_frontend            = false
+    strava_integration_enabled = true
+  }
+
+  expect_failures = [data.kustomization_overlay.sportapp]
+}
+
+run "rechaza_callback_que_no_es_el_de_bff_mobile" {
+  command = plan
+
+  variables {
+    deploy_backend      = false
+    deploy_frontend     = false
+    strava_redirect_uri = "http://localhost:18081/otra-ruta"
+  }
+
+  expect_failures = [var.strava_redirect_uri]
+}

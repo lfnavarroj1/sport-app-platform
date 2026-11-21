@@ -42,6 +42,12 @@ variable "sync_secrets" {
   default     = true
 }
 
+variable "sync_strava_secret" {
+  description = "Copia a GKE el Secret sportapp-third-party (STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, STRAVA_TOKEN_KEY) desde Secret Manager (HU031, ADR-042). Actívelo solo cuando el responsable haya cargado los tres secretos strava-*; nunca borra el Secret existente."
+  type        = bool
+  default     = false
+}
+
 variable "secrets_revision" {
   description = "Incrementar vuelve a copiar a GKE las contraseñas y la clave JWT desde Secret Manager (tras una rotación)."
   type        = number

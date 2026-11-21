@@ -46,6 +46,16 @@
           "third-party-management"
         ],
         "cloudRunDeployments": ["bff-web", "bff-mobile"],
+        "components": {
+          "strava-integration": {
+            "deployments": [
+              "third-party-management-outbox-publisher",
+              "third-party-management-sync-worker",
+              "training-management-external-activity-consumer"
+            ],
+            "jobs": ["third-party-management-migrate-main"]
+          }
+        },
         "jobs": [
           "users-management-migrate-write",
           "users-management-migrate-read",

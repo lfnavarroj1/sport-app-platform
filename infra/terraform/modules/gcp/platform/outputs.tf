@@ -108,6 +108,9 @@ output "runtime_config" {
     registration_policies_version        = var.app_config.registration_policies_version
     health_data_consent_version          = var.app_config.health_data_consent_version
     affiliation_expected_catalog_version = var.app_config.affiliation_expected_catalog_version
+    # HU031 (ADR-042): callback público de bff-mobile, exacto como se registra en Strava.
+    strava_redirect_uri    = "${local.cloud_run_urls["bff-mobile"]}/v1/integrations/strava/callback"
+    strava_consent_version = var.app_config.strava_consent_version
   }
 }
 
@@ -129,4 +132,14 @@ output "service_accounts" {
 output "app_secret_ids" {
   description = "Secretos de aplicación pendientes de cargar con gcloud."
   value       = module.app_secrets.secret_ids
+}
+
+output "external_activity_pubsub" {
+  description = "Mensajería de Terceros (HU031, ADR-042): tópico de integración y suscripción del consumidor de Entrenamientos."
+  value = {
+    topic                        = google_pubsub_topic.integration["terceros"].name
+    subscription                 = module.external_activity_consumer.subscription
+    dead_letter_topic            = module.external_activity_consumer.dead_letter_topic
+    dead_letter_subscription_ops = module.external_activity_consumer.dead_letter_subscription
+  }
 }

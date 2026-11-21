@@ -67,6 +67,46 @@ run "terraform_tfvars_es_valido" {
   }
 }
 
+# HU031 (ADR-042): mensajería, secretos y callback de Strava en producción (solo plan).
+run "strava_hu031" {
+  command = plan
+
+  variables {
+    strava_consent_version = "strava-consentimiento-prueba.v1"
+  }
+
+  assert {
+    condition = (
+      output.external_activity_pubsub.topic == "sportapp.terceros.v1" &&
+      output.external_activity_pubsub.subscription == "entrenamientos-actividades-externas-v1" &&
+      output.external_activity_pubsub.dead_letter_topic == "sportapp.terceros.actividades.dlq" &&
+      output.integration_topics["terceros"] == "sportapp.terceros.v1" &&
+      output.cloud_sql.password_secrets["terceros"] == "db-password-terceros"
+    )
+    error_message = "Producción declara el tópico, la suscripción, la DLQ y la base terceros de HU031."
+  }
+
+  assert {
+    condition = (
+      alltrue([for id in ["strava-client-id", "strava-client-secret", "strava-token-key"] : contains(keys(var.app_secrets), id)]) &&
+      output.runtime_config.strava_redirect_uri == "https://bff-mobile-123456789012.us-central1.run.app/v1/integrations/strava/callback" &&
+      output.runtime_config.strava_consent_version == "strava-consentimiento-prueba.v1" &&
+      contains(keys(output.gke_internal_apis), "third-party-management")
+    )
+    error_message = "Producción declara los secretos de Strava (sin valores), el callback de bff-mobile y la URL interna de Terceros."
+  }
+}
+
+run "rechaza_consentimiento_de_strava_demasiado_largo" {
+  command = plan
+
+  variables {
+    strava_consent_version = "strava-consentimiento-demasiado-largo-que-supera-los-sesenta-y-cuatro-caracteres"
+  }
+
+  expect_failures = [var.strava_consent_version]
+}
+
 run "exige_version_de_consentimiento" {
   command = plan
 

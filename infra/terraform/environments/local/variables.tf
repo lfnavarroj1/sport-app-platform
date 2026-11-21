@@ -91,6 +91,34 @@ variable "health_data_consent_version" {
   default     = "local-dev"
 }
 
+variable "strava_integration_enabled" {
+  description = "Despliega el componente strava-integration del backend (HU031, ADR-042): migración de la base terceros, terceros-outbox-publisher, terceros-sync-worker y el consumidor de actividades externas; el apply espera su rollout. Exige el Secret sportapp-third-party cargado (docs/guia-prueba-strava.md); sin él, third-party-management no queda listo."
+  type        = bool
+  default     = false
+}
+
+variable "strava_redirect_uri" {
+  description = "STRAVA_REDIRECT_URI: callback público de bff-mobile, exacto como se registra en el portal de Strava. El valor local usa el acceso bff-mobile-local (localhost:18081); un dispositivo real necesita una URL HTTPS pública (docs/guia-prueba-strava.md)."
+  type        = string
+  default     = "http://localhost:18081/v1/integrations/strava/callback"
+
+  validation {
+    condition     = can(regex("^https?://[^/]+/v1/integrations/strava/callback$", var.strava_redirect_uri))
+    error_message = "strava_redirect_uri debe terminar en /v1/integrations/strava/callback (callback de bff-mobile)."
+  }
+}
+
+variable "strava_consent_version" {
+  description = "STRAVA_CONSENT_VERSION: versión del texto de consentimiento que muestra el móvil antes de abrir Strava (1-64 caracteres). Solo valor local de desarrollo: el de producción lo aprueba el responsable."
+  type        = string
+  default     = "local-dev"
+
+  validation {
+    condition     = length(var.strava_consent_version) >= 1 && length(var.strava_consent_version) <= 64
+    error_message = "third-party-management admite de 1 a 64 caracteres en STRAVA_CONSENT_VERSION."
+  }
+}
+
 variable "password_revision" {
   description = "Incrementar regenera las contraseñas; exige recrear PostgreSQL (ver README)."
   type        = number

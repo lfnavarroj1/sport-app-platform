@@ -30,6 +30,8 @@ Thumbs.db
 # Copia local de backend/deploy/k8s/base para renderizar los perfiles de Cloud Deploy.
 deploy/clouddeploy/gke/backend-base/*
 !deploy/clouddeploy/gke/backend-base/README.md
+# Copia local de backend/deploy/k8s/components/strava-integration (HU031).
+deploy/clouddeploy/gke/backend-components/
 
 # Python
 __pycache__/
