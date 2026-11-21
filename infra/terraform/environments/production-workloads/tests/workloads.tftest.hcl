@@ -21,32 +21,36 @@ override_data {
       gke = { name = "sportapp-prod-gke", location = "us-central1", dns_endpoint = "gke-0000.us-central1.gke.goog", namespace = "sportapp", cluster_id = "projects/sportapp-test/locations/us-central1/clusters/sportapp-prod-gke" }
       # Mismas KSA que gke_workloads de modules/gcp/platform.
       gke_workload_identities = {
-        "users-management"                          = "gke-users-api@sportapp-test.iam.gserviceaccount.com"
-        "users-management-outbox-publisher"         = "gke-users-outbox@sportapp-test.iam.gserviceaccount.com"
-        "users-management-read-projector"           = "gke-users-projector@sportapp-test.iam.gserviceaccount.com"
-        "users-management-migrate"                  = "gke-users-migrate@sportapp-test.iam.gserviceaccount.com"
-        "affiliation-management"                    = "gke-affiliation-api@sportapp-test.iam.gserviceaccount.com"
-        "affiliation-management-free-plan-consumer" = "gke-affiliation-consumer@sportapp-test.iam.gserviceaccount.com"
-        "affiliation-management-outbox-publisher"   = "gke-affiliation-outbox@sportapp-test.iam.gserviceaccount.com"
-        "affiliation-management-migrate"            = "gke-affiliation-migrate@sportapp-test.iam.gserviceaccount.com"
-        "complementary-services"                    = "gke-services-api@sportapp-test.iam.gserviceaccount.com"
-        "complementary-services-outbox-publisher"   = "gke-services-outbox@sportapp-test.iam.gserviceaccount.com"
-        "complementary-services-migrate"            = "gke-services-migrate@sportapp-test.iam.gserviceaccount.com"
-        "training-management"                       = "gke-training-api@sportapp-test.iam.gserviceaccount.com"
-        "training-management-outbox-publisher"      = "gke-training-outbox@sportapp-test.iam.gserviceaccount.com"
-        "training-management-read-projector"        = "gke-training-projector@sportapp-test.iam.gserviceaccount.com"
-        "training-management-migrate"               = "gke-training-migrate@sportapp-test.iam.gserviceaccount.com"
-        "events-management"                         = "gke-events-api@sportapp-test.iam.gserviceaccount.com"
-        "events-management-outbox-publisher"        = "gke-events-outbox@sportapp-test.iam.gserviceaccount.com"
-        "events-management-read-projector"          = "gke-events-projector@sportapp-test.iam.gserviceaccount.com"
-        "events-management-migrate"                 = "gke-events-migrate@sportapp-test.iam.gserviceaccount.com"
-        "third-party-management"                    = "gke-third-party@sportapp-test.iam.gserviceaccount.com"
+        "users-management"                               = "gke-users-api@sportapp-test.iam.gserviceaccount.com"
+        "users-management-outbox-publisher"              = "gke-users-outbox@sportapp-test.iam.gserviceaccount.com"
+        "users-management-read-projector"                = "gke-users-projector@sportapp-test.iam.gserviceaccount.com"
+        "users-management-migrate"                       = "gke-users-migrate@sportapp-test.iam.gserviceaccount.com"
+        "affiliation-management"                         = "gke-affiliation-api@sportapp-test.iam.gserviceaccount.com"
+        "affiliation-management-free-plan-consumer"      = "gke-affiliation-consumer@sportapp-test.iam.gserviceaccount.com"
+        "affiliation-management-outbox-publisher"        = "gke-affiliation-outbox@sportapp-test.iam.gserviceaccount.com"
+        "affiliation-management-migrate"                 = "gke-affiliation-migrate@sportapp-test.iam.gserviceaccount.com"
+        "complementary-services"                         = "gke-services-api@sportapp-test.iam.gserviceaccount.com"
+        "complementary-services-outbox-publisher"        = "gke-services-outbox@sportapp-test.iam.gserviceaccount.com"
+        "complementary-services-migrate"                 = "gke-services-migrate@sportapp-test.iam.gserviceaccount.com"
+        "training-management"                            = "gke-training-api@sportapp-test.iam.gserviceaccount.com"
+        "training-management-outbox-publisher"           = "gke-training-outbox@sportapp-test.iam.gserviceaccount.com"
+        "training-management-read-projector"             = "gke-training-projector@sportapp-test.iam.gserviceaccount.com"
+        "training-management-migrate"                    = "gke-training-migrate@sportapp-test.iam.gserviceaccount.com"
+        "events-management"                              = "gke-events-api@sportapp-test.iam.gserviceaccount.com"
+        "events-management-outbox-publisher"             = "gke-events-outbox@sportapp-test.iam.gserviceaccount.com"
+        "events-management-read-projector"               = "gke-events-projector@sportapp-test.iam.gserviceaccount.com"
+        "events-management-migrate"                      = "gke-events-migrate@sportapp-test.iam.gserviceaccount.com"
+        "third-party-management"                         = "gke-third-party@sportapp-test.iam.gserviceaccount.com"
+        "third-party-management-outbox-publisher"        = "gke-third-party-outbox@sportapp-test.iam.gserviceaccount.com"
+        "third-party-management-sync-worker"             = "gke-third-party-sync-worker@sportapp-test.iam.gserviceaccount.com"
+        "third-party-management-migrate"                 = "gke-third-party-migrate@sportapp-test.iam.gserviceaccount.com"
+        "training-management-external-activity-consumer" = "gke-training-external@sportapp-test.iam.gserviceaccount.com"
       }
       cloud_sql = {
         instance_name    = "sportapp-prod-pg"
         connection_name  = "sportapp-test:us-central1:sportapp-prod-pg"
         private_ip       = "10.20.0.3"
-        password_secrets = { usuarios = "db-password-usuarios", afiliacion = "db-password-afiliacion", servicios = "db-password-servicios", entrenamientos = "db-password-entrenamientos", eventos = "db-password-eventos" }
+        password_secrets = { usuarios = "db-password-usuarios", afiliacion = "db-password-afiliacion", servicios = "db-password-servicios", entrenamientos = "db-password-entrenamientos", eventos = "db-password-eventos", terceros = "db-password-terceros" }
       }
       gke_internal_apis = {
         users-management       = "10.10.0.10"
@@ -54,6 +58,7 @@ override_data {
         training-management    = "10.10.0.12"
         complementary-services = "10.10.0.13"
         events-management      = "10.10.0.14"
+        third-party-management = "10.10.0.15"
       }
       gke_internal_source_ranges = ["10.10.16.0/26"]
       runtime_config = {
@@ -63,6 +68,8 @@ override_data {
         registration_policies_version        = "sportapp-c108-c108plus.v1"
         health_data_consent_version          = "consentimiento-prueba.v1"
         affiliation_expected_catalog_version = "plans-2026-10-13.v1"
+        strava_redirect_uri                  = "https://bff-mobile-123456789012.us-central1.run.app/v1/integrations/strava/callback"
+        strava_consent_version               = "strava-consentimiento-prueba.v1"
       }
       delivery_identities = {
         build_backend    = "cloud-build-backend@sportapp-mgmt-test.iam.gserviceaccount.com"
@@ -126,6 +133,7 @@ run "base_kubernetes_sin_cargas" {
         training-management    = "10.10.0.12"
         complementary-services = "10.10.0.13"
         events-management      = "10.10.0.14"
+        third-party-management = "10.10.0.15"
         } : (
         jsondecode(data.kustomization_overlay.backend.manifests["_/Service/sportapp/${name}"]).spec.type == "LoadBalancer" &&
         jsondecode(data.kustomization_overlay.backend.manifests["_/Service/sportapp/${name}"]).spec.loadBalancerIP == ip &&
@@ -142,6 +150,8 @@ run "base_kubernetes_sin_cargas" {
       kubernetes_config_map_v1.runtime.data["APP_ENV"] == "production" &&
       kubernetes_config_map_v1.runtime.data["DATABASE_HOST"] == "10.20.0.3" &&
       kubernetes_config_map_v1.runtime.data["AFFILIATION_EXPECTED_CATALOG_VERSION"] == "plans-2026-10-13.v1" &&
+      kubernetes_config_map_v1.runtime.data["STRAVA_REDIRECT_URI"] == "https://bff-mobile-123456789012.us-central1.run.app/v1/integrations/strava/callback" &&
+      kubernetes_config_map_v1.runtime.data["STRAVA_CONSENT_VERSION"] == "strava-consentimiento-prueba.v1" &&
       !contains(keys(kubernetes_config_map_v1.runtime.data), "PUBSUB_EMULATOR_HOST")
     )
     error_message = "sportapp-runtime (nombre fijo) usa Cloud SQL privado, Pub/Sub administrado y las versiones del ambiente."
@@ -172,6 +182,18 @@ run "base_kubernetes_sin_cargas" {
       )
     ])
     error_message = "Cloud Deploy no borra objetos ni modifica Secrets, ConfigMaps, RBAC, KSA o Services."
+  }
+}
+
+# HU031: el Secret sportapp-third-party solo se gestiona si el responsable cargó los secretos.
+run "secret_de_strava_opcional" {
+  command = plan
+
+  expect_failures = [check.secrets_sincronizados]
+
+  assert {
+    condition     = length(kubernetes_secret_v1.third_party) == 0 && length(ephemeral.google_secret_manager_secret_version.strava) == 0
+    error_message = "Por defecto no se lee Secret Manager ni se crea sportapp-third-party."
   }
 }
 

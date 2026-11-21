@@ -182,6 +182,8 @@ curl.exe http://localhost:18082/healthz
 
 El ambiente está listo cuando los pods están `Running`, los Jobs están `Complete` y ambos endpoints responden `200`.
 
+La integración con Strava (HU031) no se despliega por defecto: requiere el Secret `sportapp-third-party` y el apply con `-var strava_integration_enabled=true`. Los pasos, el callback y la verificación están en [guia-prueba-strava.md](guia-prueba-strava.md).
+
 ## 7. Actualizar backend y frontend
 
 No es necesario reconstruir toda la infraestructura cuando cambia código de aplicación.

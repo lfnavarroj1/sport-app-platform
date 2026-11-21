@@ -104,7 +104,7 @@ run "infraestructura_sin_imagenes" {
   }
 
   assert {
-    condition     = length(google_secret_manager_secret_iam_member.db_password) == 19
+    condition     = length(google_secret_manager_secret_iam_member.db_password) == 24
     error_message = "Todas las cargas con dominio, y solo ellas, leen su contraseña."
   }
 
@@ -155,17 +155,18 @@ run "infraestructura_sin_imagenes" {
 
   assert {
     condition = (
-      toset(keys(google_pubsub_topic_iam_member.integration_publishers)) == toset(["affiliation-outbox", "services-outbox"]) &&
+      toset(keys(google_pubsub_topic_iam_member.integration_publishers)) == toset(["affiliation-outbox", "services-outbox", "third-party-outbox"]) &&
       google_pubsub_topic_iam_member.integration_publishers["affiliation-outbox"].topic == "sportapp.afiliacion.v1" &&
       google_pubsub_topic_iam_member.integration_publishers["services-outbox"].topic == "sportapp.servicios.v1" &&
+      google_pubsub_topic_iam_member.integration_publishers["third-party-outbox"].topic == "sportapp.terceros.v1" &&
       alltrue([for m in google_pubsub_topic_iam_member.integration_publishers : m.role == "roles/pubsub.publisher"])
     )
-    error_message = "Solo el publicador outbox de Afiliación y el de Servicios publican, cada uno en su tópico de integración."
+    error_message = "Solo el publicador outbox de Afiliación, el de Servicios y el de Terceros publican, cada uno en su tópico de integración."
   }
 
   assert {
-    condition     = output.integration_topics == { afiliacion = "sportapp.afiliacion.v1", servicios = "sportapp.servicios.v1" }
-    error_message = "Afiliación y Servicios tienen tópico de integración."
+    condition     = output.integration_topics == { afiliacion = "sportapp.afiliacion.v1", servicios = "sportapp.servicios.v1", terceros = "sportapp.terceros.v1" }
+    error_message = "Afiliación, Servicios y Terceros tienen tópico de integración."
   }
 
   # Cada dominio con base tiene una identidad de migración que solo lee su secreto.
@@ -177,13 +178,14 @@ run "infraestructura_sin_imagenes" {
         services-migrate    = "servicios"
         training-migrate    = "entrenamientos"
         events-migrate      = "eventos"
+        third-party-migrate = "terceros"
       } : google_secret_manager_secret_iam_member.db_password[key].secret_id == "db-password-${domain}"
     ])
     error_message = "Los Jobs de migración tienen identidad propia por dominio y leen solo su secreto."
   }
 
   assert {
-    condition     = toset(keys(output.gke_internal_apis)) == toset(["users-management", "affiliation-management", "training-management", "complementary-services", "events-management"])
+    condition     = toset(keys(output.gke_internal_apis)) == toset(["users-management", "affiliation-management", "training-management", "complementary-services", "events-management", "third-party-management"])
     error_message = "Cada API que llaman los BFF tiene una IP interna reservada."
   }
 
@@ -240,9 +242,10 @@ run "servicios_y_secretos_de_aplicacion" {
       ]) &&
       toset(keys(output.cloud_run_env["bff-mobile"])) == toset([
         "APP_ENV", "USERS_MANAGEMENT_BASE_URL", "AFFILIATION_MANAGEMENT_BASE_URL", "TRAINING_MANAGEMENT_BASE_URL", "COMPLEMENTARY_SERVICES_BASE_URL", "EVENTS_MANAGEMENT_BASE_URL",
+        "THIRD_PARTY_MANAGEMENT_BASE_URL",
       ])
     )
-    error_message = "bff-web y bff-mobile reciben las URL internas de las APIs que exige su configuración."
+    error_message = "bff-web y bff-mobile reciben las URL internas de las APIs que exige su configuración (bff-mobile también la de Terceros, HU031)."
   }
 
   assert {
@@ -254,6 +257,86 @@ run "servicios_y_secretos_de_aplicacion" {
     )
     error_message = "web y bff-web se referencian por sus URL deterministas y la web recibe las versiones del ambiente."
   }
+}
+
+# HU031 (ADR-042): base `terceros`, mensajería, identidades y configuración de Strava.
+run "terceros_hu031" {
+  command = plan
+
+  variables {
+    app_config = {
+      registration_policies_version        = "sportapp-c108-c108plus.v1"
+      health_data_consent_version          = "consentimiento-prueba.v1"
+      affiliation_expected_catalog_version = "plans-2026-10-13.v1"
+      strava_consent_version               = "strava-consentimiento-prueba.v1"
+    }
+  }
+
+  assert {
+    condition = (
+      output.external_activity_pubsub == {
+        topic                        = "sportapp.terceros.v1"
+        subscription                 = "entrenamientos-actividades-externas-v1"
+        dead_letter_topic            = "sportapp.terceros.actividades.dlq"
+        dead_letter_subscription_ops = "sportapp.terceros.actividades.dlq.ops"
+      } &&
+      !contains(keys(output.pubsub), "terceros")
+    )
+    error_message = "HU031: tópico, suscripción y DLQ con los nombres del contrato; Terceros no es un dominio CQRS."
+  }
+
+  # Cada carga de Terceros usa la KSA que declara el backend y lee solo el secreto de su base.
+  assert {
+    condition = alltrue([
+      for ksa in [
+        "third-party-management", "third-party-management-outbox-publisher", "third-party-management-sync-worker",
+        "third-party-management-migrate", "training-management-external-activity-consumer",
+      ] : contains(keys(output.gke_workload_identities), ksa)
+    ])
+    error_message = "HU031: las KSA de Terceros y del consumidor de actividades externas tienen identidad propia."
+  }
+
+  assert {
+    condition = alltrue([
+      for key in ["third-party", "third-party-outbox", "third-party-sync-worker", "third-party-migrate"] :
+      google_secret_manager_secret_iam_member.db_password[key].secret_id == "db-password-terceros"
+    ]) && google_secret_manager_secret_iam_member.db_password["training-external"].secret_id == "db-password-entrenamientos"
+    error_message = "HU031: Terceros lee solo db-password-terceros y el consumidor solo la contraseña de Entrenamientos."
+  }
+
+  assert {
+    condition = (
+      output.cloud_sql.password_secrets["terceros"] == "db-password-terceros" &&
+      output.runtime_config.strava_redirect_uri == "https://bff-mobile-123456789012.us-central1.run.app/v1/integrations/strava/callback" &&
+      output.runtime_config.strava_consent_version == "strava-consentimiento-prueba.v1"
+    )
+    error_message = "HU031: base y usuario terceros, callback público de bff-mobile y consentimiento de Strava en la configuración del ambiente."
+  }
+
+  assert {
+    condition     = contains(keys(output.cloud_run_env["bff-mobile"]), "THIRD_PARTY_MANAGEMENT_BASE_URL") && contains(keys(output.gke_internal_apis), "third-party-management")
+    error_message = "HU031: bff-mobile llama a Terceros por el balanceador interno."
+  }
+
+  assert {
+    condition     = !contains(keys(output.cloud_run_env["bff-web"]), "THIRD_PARTY_MANAGEMENT_BASE_URL")
+    error_message = "HU031 es exclusiva del canal móvil: bff-web no recibe la URL de Terceros."
+  }
+}
+
+run "rechaza_consentimiento_de_strava_demasiado_largo" {
+  command = plan
+
+  variables {
+    app_config = {
+      registration_policies_version        = "sportapp-c108-c108plus.v1"
+      health_data_consent_version          = "consentimiento-prueba.v1"
+      affiliation_expected_catalog_version = "plans-2026-10-13.v1"
+      strava_consent_version               = "strava-consentimiento-demasiado-largo-que-supera-los-sesenta-y-cuatro-caracteres"
+    }
+  }
+
+  expect_failures = [var.app_config]
 }
 
 run "rechaza_imagen_por_tag" {

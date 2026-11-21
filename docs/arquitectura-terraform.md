@@ -229,6 +229,7 @@ Cada microservicio tiene **sus propias bases** y su propio usuario, igual que en
 | Servicios | `servicios` | `servicios` | `SERVICIOS_DB_PASSWORD` / `db-password-servicios` |
 | Entrenamientos | `entrenamientos_write`, `entrenamientos_read` | `entrenamientos` | `ENTRENAMIENTOS_DB_PASSWORD` / `db-password-entrenamientos` |
 | Eventos | `eventos_write`, `eventos_read` | `eventos` | `EVENTOS_DB_PASSWORD` / `db-password-eventos` |
+| Terceros (HU031) | `terceros` | `terceros` | `TERCEROS_DB_PASSWORD` / `db-password-terceros` |
 
 Ningún servicio recibe la contraseña de otro dominio: cada carga solo lee el secreto del suyo. En local, cada rol es dueño de sus bases y se revoca el acceso público a ellas. En Cloud SQL, los usuarios creados pertenecen a `cloudsqlsuperuser`, así que restringir cada usuario a sus bases con `GRANT`/`REVOKE` sigue pendiente.
 

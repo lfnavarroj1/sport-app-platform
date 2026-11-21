@@ -38,6 +38,11 @@ output "affiliation_pubsub" {
   value       = module.platform.affiliation_pubsub
 }
 
+output "external_activity_pubsub" {
+  description = "Mensajería de Terceros (HU031, ADR-042): tópico de integración y suscripción del consumidor de Entrenamientos."
+  value       = module.platform.external_activity_pubsub
+}
+
 output "cloud_run_urls" {
   description = "URL de cada servicio Cloud Run."
   value       = module.platform.cloud_run_urls

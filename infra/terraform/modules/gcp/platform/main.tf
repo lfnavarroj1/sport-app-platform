@@ -53,14 +53,18 @@ locals {
       }
       pubsub_max_delivery_attempts = null
     }
+    # HU031 (ADR-042): base única `terceros`; no es CQRS, su tópico es de integración.
+    terceros = { databases = ["terceros"], cqrs = false, pubsub_names = null, pubsub_max_delivery_attempts = null }
   }
 
   # Tópicos de integración de dominios no CQRS: solo su publicador outbox
   # publica y no tienen suscripción mientras no exista un consumidor aprobado.
-  # Afiliación (ADR-024) también consume usuario.registrado.v1 de Usuarios.
+  # Afiliación (ADR-024) también consume usuario.registrado.v1 de Usuarios y
+  # Entrenamientos consume actividad.importada.v1 de Terceros (HU031, ADR-042).
   integration_topics = {
     afiliacion = "sportapp.afiliacion.v1"
     servicios  = "sportapp.servicios.v1"
+    terceros   = "sportapp.terceros.v1"
   }
 
   # Cargas de GKE. ksa coincide con el nombre del Deployment en backend/deploy/k8s;
@@ -85,7 +89,13 @@ locals {
     events-outbox        = { ksa = "events-management-outbox-publisher", domain = "eventos", kind = "outbox" }
     events-projector     = { ksa = "events-management-read-projector", domain = "eventos", kind = "projector" }
     events-migrate       = { ksa = "events-management-migrate", domain = "eventos", kind = "migration" }
-    third-party          = { ksa = "third-party-management", domain = null, kind = "api" }
+    # HU031 (ADR-042): Terceros y el consumidor de actividades externas de Entrenamientos
+    # (deploy/k8s/components/strava-integration del backend).
+    third-party             = { ksa = "third-party-management", domain = "terceros", kind = "api" }
+    third-party-outbox      = { ksa = "third-party-management-outbox-publisher", domain = "terceros", kind = "outbox" }
+    third-party-sync-worker = { ksa = "third-party-management-sync-worker", domain = "terceros", kind = "worker" }
+    third-party-migrate     = { ksa = "third-party-management-migrate", domain = "terceros", kind = "migration" }
+    training-external       = { ksa = "training-management-external-activity-consumer", domain = "entrenamientos", kind = "consumer" }
   }
 
   # APIs de GKE que llaman los BFF de Cloud Run, por la variable que las nombra.
@@ -96,10 +106,12 @@ locals {
     training-management    = "TRAINING_MANAGEMENT_BASE_URL"
     complementary-services = "COMPLEMENTARY_SERVICES_BASE_URL"
     events-management      = "EVENTS_MANAGEMENT_BASE_URL"
+    third-party-management = "THIRD_PARTY_MANAGEMENT_BASE_URL"
   }
   bff_upstreams = {
-    bff-web    = keys(local.gke_internal_apis)
-    bff-mobile = ["users-management", "affiliation-management", "training-management", "complementary-services", "events-management"]
+    bff-web = ["users-management", "affiliation-management", "training-management", "complementary-services", "events-management"]
+    # HU031: bff-mobile reenvía las operaciones de Strava y el callback a Terceros.
+    bff-mobile = ["users-management", "affiliation-management", "training-management", "complementary-services", "events-management", "third-party-management"]
   }
 
   # Servicios de Cloud Run. El puerto web es provisional hasta que exista su imagen.
@@ -455,6 +467,25 @@ module "free_plan_consumer" {
   }
 }
 
+# HU031 (ADR-042): entrenamientos-external-activity-consumer recibe actividad.importada.v1
+# por una suscripción ordenada (ordering_key = user_id) con 10 entregas, espera de
+# 10 a 600 s y DLQ propia.
+module "external_activity_consumer" {
+  source = "../pubsub-consumer"
+
+  project_id        = var.project_id
+  project_number    = data.google_project.this.number
+  topic             = google_pubsub_topic.integration["terceros"].name
+  subscription      = "entrenamientos-actividades-externas-v1"
+  dead_letter_topic = "sportapp.terceros.actividades.dlq"
+  settings          = var.pubsub
+
+  subscriber_members = {
+    for key, w in local.gke_workloads : key => module.iam.members[key]
+    if w.domain == "entrenamientos" && w.kind == "consumer"
+  }
+}
+
 module "app_secrets" {
   source = "../secret-manager"
 
@@ -510,7 +541,7 @@ module "observability" {
   notification_emails = var.alert_emails
   consumer_subscriptions = concat(
     [for m in module.pubsub : m.projector_subscription],
-    [module.free_plan_consumer.subscription],
+    [module.free_plan_consumer.subscription, module.external_activity_consumer.subscription],
   )
 
   depends_on = [module.project_services]

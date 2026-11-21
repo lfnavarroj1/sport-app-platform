@@ -38,5 +38,6 @@ module "platform" {
     registration_policies_version        = var.registration_policies_version
     health_data_consent_version          = var.health_data_consent_version
     affiliation_expected_catalog_version = var.affiliation_expected_catalog_version
+    strava_consent_version               = var.strava_consent_version
   }
 }
