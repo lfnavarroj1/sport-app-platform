@@ -105,7 +105,25 @@ flowchart LR
 
 **Punto final:** `main` contiene y etiqueta la composición liberada, mientras `develop` conserva tanto las historias entregadas como las correcciones hechas durante la release. Solo entonces termina el flujo normal.
 
-Un solo menú, [`scripts/sportapp.ps1`](docs/guia-menu-sportapp.md), reúne el asistente de Strava, los releases y el despliegue (local o GCP), y delega en los scripts siguientes.
+### Script principal: `sportapp.ps1`
+
+Un solo menú, [`scripts/sportapp.ps1`](docs/guia-menu-sportapp.md), reúne el asistente de Strava, los releases y el despliegue (local o GCP), y delega en los scripts siguientes. Se ejecuta desde la carpeta `platform`, en Windows PowerShell 5.1 o superior:
+
+```powershell
+.\scripts\sportapp.ps1            # menú interactivo (1 Strava, 2 releases, 3 desplegar/actualizar, 0 salir)
+.\scripts\sportapp.ps1 help       # ayuda
+```
+
+Sin menú, con subcomandos:
+
+```powershell
+.\scripts\sportapp.ps1 strava -Environment gcp                                   # asistente de Strava (local o gcp)
+.\scripts\sportapp.ps1 release sequence -Target backend -Bump patch              # secuencia completa de release
+.\scripts\sportapp.ps1 deploy update -Environment local -Component bff-mobile    # actualizar un componente en local
+.\scripts\sportapp.ps1 deploy promote -Environment gcp -BackendVersion v1.2.0 -FrontendVersion v0.9.0
+```
+
+Acciones de `deploy`: en local `check`, `build`, `plan`, `apply`, `update`; en GCP `plan`, `status`, `images`, `up`, `promote`, `down`. Detalle completo en la [guía del menú](docs/guia-menu-sportapp.md).
 
 Los pasos 10 a 14 se ejecutan desde la estación del operador con [`sportapp-release.ps1`](scripts/sportapp-release.md). El script muestra un menú para elegir qué se publica:
 - backend, frontend o los dos;
