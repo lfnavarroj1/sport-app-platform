@@ -71,10 +71,6 @@ run "terraform_tfvars_es_valido" {
 run "strava_hu031" {
   command = plan
 
-  variables {
-    strava_consent_version = "strava-consentimiento-prueba.v1"
-  }
-
   assert {
     condition = (
       output.external_activity_pubsub.topic == "sportapp.terceros.v1" &&
@@ -90,7 +86,7 @@ run "strava_hu031" {
     condition = (
       alltrue([for id in ["strava-client-id", "strava-client-secret", "strava-token-key"] : contains(keys(var.app_secrets), id)]) &&
       output.runtime_config.strava_redirect_uri == "https://bff-mobile-123456789012.us-central1.run.app/v1/integrations/strava/callback" &&
-      output.runtime_config.strava_consent_version == "strava-consentimiento-prueba.v1" &&
+      output.runtime_config.strava_consent_version == "strava-2026-11-v1" &&
       contains(keys(output.gke_internal_apis), "third-party-management")
     )
     error_message = "Producción declara los secretos de Strava (sin valores), el callback de bff-mobile y la URL interna de Terceros."

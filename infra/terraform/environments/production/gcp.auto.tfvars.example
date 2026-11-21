@@ -31,10 +31,6 @@ delivery_identities = {
 # Sin valor aprobado todavía (ADR-034): el plan se detiene hasta definirla.
 # health_data_consent_version = "<versión aprobada>"
 
-# HU031 (ADR-042): versión del texto de consentimiento de Strava; sin valor
-# aprobado todavía, third-party-management no queda listo hasta definirla.
-# strava_consent_version = "<versión aprobada>"
-
 # Destinatarios de alertas de Cloud Monitoring.
 alert_emails = ["equipo-sportapp@example.com"]
 

@@ -193,7 +193,7 @@ variable "health_data_consent_version" {
 }
 
 variable "strava_consent_version" {
-  description = "Versión del texto de consentimiento de Strava que muestra el móvil (HU031, ADR-042). Sin valor aprobado: null deja STRAVA_CONSENT_VERSION sin definir y third-party-management no queda listo."
+  description = "Versión del texto de consentimiento de Strava que muestra el móvil (HU031, ADR-042). Valor aprobado en terraform.tfvars; null deja STRAVA_CONSENT_VERSION sin definir y third-party-management no queda listo."
   type        = string
   default     = null
 

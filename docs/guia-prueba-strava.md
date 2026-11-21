@@ -20,7 +20,7 @@ En producción los mismos recursos los declara Terraform (módulo `platform`) so
 
 1. Ambiente local aplicado según [preparacion-terraform-local.md](preparacion-terraform-local.md), con el backend en `develop` (incluye `deploy/k8s/components/strava-integration`) e imágenes `sportapp/*` construidas.
 2. PostgreSQL con la base `terceros`. El script de inicio solo corre con el volumen vacío: si el ambiente ya existía, destrúyalo y vuelva a aplicarlo (`terraform destroy` y `apply`), como indica la nota de `password_revision`, porque la clave `TERCEROS_DB_PASSWORD` es nueva en `sportapp-database`.
-3. Cuenta de Strava del deportista de prueba (el modo inicial de la aplicación admite un solo atleta; ver el paso pendiente 1 de la sección 9).
+3. Cuenta de Strava del deportista de prueba (el modo inicial de la aplicación admite un solo atleta; ver la sección 9).
 4. `adb` con la tableta autorizada: `adb devices` debe listar `R52NB04LMCB` en estado `device`.
 
 ## 3. Callback de Strava
@@ -54,7 +54,10 @@ Docker Desktop publica `bff-mobile` en el puerto `18081` del equipo (`bff-mobile
 - **Red local.** Tableta y equipo en la misma red; el equipo se alcanza como `http://<IP-del-equipo>:18081` (puede requerir una regla del Firewall de Windows para ese puerto). En este camino `localhost` no sirve para el callback: hace falta una URI con esa IP o nombre, registrada igual en Strava y en `strava_redirect_uri`.
 - **Dirección de API que usa la aplicación.** Qué URL base de `bff-mobile` configura el cliente móvil (`http://localhost:18081` con `adb reverse`, o la IP local) es decisión del ejecutor móvil; la plataforma solo garantiza que el puerto `18081` responde en el equipo.
 
-> **Pendiente del responsable.** Strava debe aceptar `localhost` como dominio de callback en su flujo móvil (`https://www.strava.com/oauth/mobile/authorize`) para esta aplicación. La plataforma no puede comprobarlo sin registrar la aplicación. Si Strava lo rechaza, use un túnel HTTPS público (o la URL de producción) y pase `strava_redirect_uri`; la elección del túnel también es del responsable.
+### Orden de prueba del callback
+
+1. **Primero `localhost` con `adb reverse`.** Registre `localhost` como dominio de callback, deje `strava_redirect_uri` en su valor predeterminado, cree la regla `adb -s R52NB04LMCB reverse tcp:18081 tcp:18081` y ejecute la vinculación. Verificación: al autorizar, la tableta vuelve a la app por `sportapp://integrations/strava?result=LINKED`; con `result=ERROR`/`INVALID_STATE` o un rechazo de Strava del dominio en el portal, pase al plan B.
+2. **Plan B: túnel HTTPS público.** Si Strava rechaza `localhost`, abra un túnel HTTPS hacia `localhost:18081`, registre el dominio del túnel en Strava y aplique `terraform apply -var strava_integration_enabled=true -var strava_redirect_uri=https://<dominio-del-túnel>/v1/integrations/strava/callback`. Solo cambian el dominio registrado y la variable; el código no cambia.
 
 ## 4. Registrar la aplicación en Strava (responsable)
 
@@ -100,7 +103,7 @@ El namespace debe existir (lo crea el primer `terraform apply`). Conserve la cla
    Terraform aplica el Job de migración `third-party-management-migrate-main`, espera a que termine y despliega `third-party-management`, `terceros-outbox-publisher`, `terceros-sync-worker` y el consumidor de Entrenamientos esperando su rollout. `terraform output strava` muestra el callback y los nombres de mensajería, sin secretos.
 4. Con la tableta conectada: `adb -s R52NB04LMCB reverse tcp:18081 tcp:18081`.
 
-`STRAVA_CONSENT_VERSION` vale `local-dev` en local; la versión de producción debe aprobarla el responsable (sección 9).
+`STRAVA_CONSENT_VERSION` vale `local-dev` en local y `strava-2026-11-v1` en producción (`terraform.tfvars`).
 
 ## 7. Verificación
 
@@ -141,13 +144,11 @@ Todos los comandos usan `--context docker-desktop --namespace sportapp-local`.
 Terraform declara, sin aplicarse todavía, la base `terceros` y su contraseña (`db-password-terceros`), los secretos `strava-client-id`, `strava-client-secret` y `strava-token-key` en Secret Manager (contenedores vacíos), el tópico, la suscripción y la DLQ en Pub/Sub administrado, las identidades de las cargas de Terceros y del consumidor, el balanceador interno de `third-party-management` para `bff-mobile` (`THIRD_PARTY_MANAGEMENT_BASE_URL`) y `STRAVA_REDIRECT_URI` en `sportapp-runtime`. Cloud Deploy incluye el componente `strava-integration` y su Job de migración. Cuando el responsable ordene aplicar:
 
 1. cargar cada secreto con `gcloud secrets versions add <secreto> --data-file=-`;
-2. definir `strava_consent_version` aprobado;
-3. activar `sync_strava_secret = true` en `environments/production-workloads` para copiar el Secret `sportapp-third-party` a GKE.
+2. activar `sync_strava_secret = true` en `environments/production-workloads` para copiar el Secret `sportapp-third-party` a GKE.
 
 ## 9. Pendientes del responsable
 
 1. Registrar la aplicación en Strava por ambiente y su dominio de callback (sección 4). El modo inicial admite un solo atleta; antes de abrirla a más deportistas hay que ampliar la capacidad y solicitar revisión al superar diez atletas conectados.
-2. Confirmar que Strava acepta `localhost` en el flujo móvil o elegir un túnel/URL pública HTTPS para el callback (sección 3).
+2. Seguir el orden de prueba del callback de la sección 3 (primero `localhost`; si Strava lo rechaza, túnel HTTPS).
 3. Cargar los secretos (sección 5 en local; sección 8 en producción).
-4. Aprobar la versión del texto de consentimiento (`STRAVA_CONSENT_VERSION`) de producción. Local usa `local-dev`.
-5. Decidir la capa de borde de producción: si la URL pública de `bff-mobile` deja de ser la de Cloud Run, el callback registrado en Strava y `STRAVA_REDIRECT_URI` deben cambiar juntos.
+4. Decidir la capa de borde de producción: si la URL pública de `bff-mobile` deja de ser la de Cloud Run, el callback registrado en Strava y `STRAVA_REDIRECT_URI` deben cambiar juntos.

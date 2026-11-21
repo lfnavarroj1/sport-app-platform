@@ -80,7 +80,7 @@ cloud_run_env = {
 # Versiones del ambiente (sportapp-runtime en GKE y web en Cloud Run).
 registration_policies_version        = "sportapp-c108-c108plus.v1" # HU001, aprobada 2026-10-17
 affiliation_expected_catalog_version = "plans-2026-10-13.v1"       # ADR-036, migración 0003_plan_price_offers
-# strava_consent_version: sin valor aprobado (HU031); se pasa con -var o en gcp.auto.tfvars.
+strava_consent_version               = "strava-2026-11-v1"         # HU031, aprobada 2026-11-21
 # health_data_consent_version: sin valor aprobado (ADR-034). Se pasa con -var o
 # en gcp.auto.tfvars cuando el responsable la defina; sin ella el plan se detiene.
 
