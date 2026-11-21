@@ -122,7 +122,7 @@ $script:DryRun = [bool]$DryRun
 $script:Bound = $PSBoundParameters
 # Respuestas simuladas (solo con -DryRun); '<enter>' equivale a Enter.
 $script:Simulated = New-Object System.Collections.Queue
-foreach ($x in @($SimulatedInput | ForEach-Object { $_ -split ',' })) { if ($x -eq '<enter>') { $script:Simulated.Enqueue('') } else { $script:Simulated.Enqueue($x) } }
+foreach ($x in @(if ($SimulatedInput) { $SimulatedInput | ForEach-Object { $_ -split ',' } })) { if ($x -eq '<enter>') { $script:Simulated.Enqueue('') } else { $script:Simulated.Enqueue($x) } }
 
 # --- Salida y confirmaciones --------------------------------------------------
 
