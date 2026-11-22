@@ -25,3 +25,4 @@ create_domain afiliacion "$AFILIACION_DB_PASSWORD" afiliacion
 create_domain servicios "$SERVICIOS_DB_PASSWORD" servicios
 create_domain entrenamientos "$ENTRENAMIENTOS_DB_PASSWORD" entrenamientos_write entrenamientos_read
 create_domain eventos "$EVENTOS_DB_PASSWORD" eventos_write eventos_read
+create_domain terceros "$TERCEROS_DB_PASSWORD" terceros

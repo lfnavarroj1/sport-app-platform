@@ -27,12 +27,17 @@ locals {
     "SERVICIOS_DB_PASSWORD",
     "ENTRENAMIENTOS_DB_PASSWORD",
     "EVENTOS_DB_PASSWORD",
+    "TERCEROS_DB_PASSWORD", # HU031 (ADR-042): base y usuario `terceros`
   ]
 
   # Kustomize exige rutas relativas a esta carpeta.
   shared_manifests   = "../../../kubernetes/local"
   backend_manifests  = "${var.backend_path}/deploy/k8s/base"
   frontend_manifests = "${var.frontend_path}/deploy/k8s/base"
+
+  # HU031 (ADR-042): componente de Kustomize del backend; no forma parte de la base.
+  strava_component = "${var.backend_path}/deploy/k8s/components/strava-integration"
+  strava_enabled   = var.deploy_backend && var.strava_integration_enabled
 }
 
 resource "kubernetes_namespace_v1" "sportapp" {
@@ -93,6 +98,7 @@ data "kustomization_overlay" "sportapp" {
     var.deploy_backend ? [local.backend_manifests] : [],
     var.deploy_frontend ? [local.frontend_manifests] : [],
   )
+  components = local.strava_enabled ? [local.strava_component] : []
 
   config_map_generator {
     name = "sportapp-runtime"
@@ -106,6 +112,9 @@ data "kustomization_overlay" "sportapp" {
       "USERS_MANAGEMENT_BASE_URL=http://users-management",
       "PUBSUB_PROJECT_ID=sportapp-local",
       "PUBSUB_EMULATOR_HOST=pubsub-emulator:8085",
+      # HU031 (ADR-042): third-party-management exige ambos valores para quedar listo.
+      "STRAVA_REDIRECT_URI=${var.strava_redirect_uri}",
+      "STRAVA_CONSENT_VERSION=${var.strava_consent_version}",
       # El navegador llama al BFF por el acceso bff-web-local.
       "BFF_WEB_BASE_URL=http://localhost:18080",
       # Orígenes que el BFF web acepta por CORS: la web en el clúster y npm start.
@@ -170,6 +179,14 @@ data "kustomization_overlay" "sportapp" {
       condition     = !var.deploy_frontend || fileexists("${local.frontend_manifests}/kustomization.yaml")
       error_message = "No se encontró deploy/k8s/base del frontend. Ajuste frontend_path o use deploy_frontend = false."
     }
+    precondition {
+      condition     = !var.strava_integration_enabled || var.deploy_backend
+      error_message = "strava_integration_enabled exige deploy_backend = true: el componente strava-integration pertenece al backend."
+    }
+    precondition {
+      condition     = !local.strava_enabled || fileexists("${local.strava_component}/kustomization.yaml")
+      error_message = "No se encontró deploy/k8s/components/strava-integration del backend (HU031). Actualice el backend a develop o use strava_integration_enabled = false."
+    }
   }
 }
 
@@ -188,7 +205,22 @@ locals {
 
   ids_affiliation_migrations = toset([for id in local.ids_p1_workload : id if can(regex("^batch/Job/[^/]+/affiliation-management-migrate-", id))])
   ids_affiliation_workloads  = toset([for id in local.ids_p1_workload : id if can(regex("^apps/Deployment/[^/]+/affiliation-management(-|$)", id))])
-  ids_other_workloads        = setsubtract(local.ids_p1_workload, setunion(local.ids_affiliation_migrations, local.ids_affiliation_workloads))
+
+  # Terceros (HU031, ADR-042): su migración (Job del componente strava-integration)
+  # termina antes de habilitar third-party-management y sus workers, y el consumidor
+  # de actividades externas de Entrenamientos.
+  ids_terceros_migrations = toset([for id in local.ids_p1_workload : id if can(regex("^batch/Job/[^/]+/third-party-management-migrate-", id))])
+  ids_terceros_workloads  = toset([for id in local.ids_p1_workload : id if can(regex("^apps/Deployment/[^/]+/(third-party-management(-|$)|training-management-external-activity-consumer$)", id))])
+
+  ids_other_workloads = setsubtract(
+    local.ids_p1_workload,
+    setunion(
+      local.ids_affiliation_migrations,
+      local.ids_affiliation_workloads,
+      local.ids_terceros_migrations,
+      local.ids_terceros_workloads,
+    ),
+  )
 }
 
 resource "kustomization_resource" "p0" {
@@ -286,6 +318,55 @@ moved {
   to   = kustomization_resource.affiliation_workloads["apps/Deployment/sportapp-local/affiliation-management-outbox-publisher"]
 }
 
+# Migración de la base `terceros` (0001_strava_connections). Solo existe con
+# strava_integration_enabled = true.
+resource "kustomization_resource" "terceros_migrations" {
+  for_each = local.ids_terceros_migrations
+
+  manifest = data.kustomization_overlay.sportapp.manifests[each.value]
+
+  depends_on = [kustomization_resource.p1]
+}
+
+resource "terraform_data" "terceros_migrations_complete" {
+  for_each = local.ids_terceros_migrations
+
+  triggers_replace = kustomization_resource.terceros_migrations[each.key].manifest
+
+  provisioner "local-exec" {
+    command = "kubectl --context ${var.kube_context} --namespace ${local.namespace} wait --for=condition=complete --timeout=10m job/${split("/", each.key)[3]}"
+    environment = {
+      KUBECONFIG = pathexpand(var.kubeconfig_path)
+    }
+  }
+}
+
+# third-party-management queda `Ready` solo con el Secret sportapp-third-party
+# cargado (docs/guia-prueba-strava.md); por eso el apply solo espera su rollout
+# cuando strava_integration_enabled = true.
+resource "kustomization_resource" "terceros_workloads" {
+  for_each = local.ids_terceros_workloads
+
+  manifest = data.kustomization_overlay.sportapp.manifests[each.value]
+  wait     = var.wait_for_rollout && local.strava_enabled
+
+  timeouts {
+    create = "10m"
+    update = "10m"
+  }
+
+  depends_on = [
+    kustomization_resource.p1,
+    terraform_data.terceros_migrations_complete,
+  ]
+}
+
+# Estado creado antes de la fase de Terceros: mover, no recrear.
+moved {
+  from = kustomization_resource.p1_workloads["apps/Deployment/sportapp-local/third-party-management"]
+  to   = kustomization_resource.terceros_workloads["apps/Deployment/sportapp-local/third-party-management"]
+}
+
 resource "kustomization_resource" "p2" {
   for_each = data.kustomization_overlay.sportapp.ids_prio[2]
 
@@ -294,5 +375,6 @@ resource "kustomization_resource" "p2" {
   depends_on = [
     kustomization_resource.p1_workloads,
     kustomization_resource.affiliation_workloads,
+    kustomization_resource.terceros_workloads,
   ]
 }

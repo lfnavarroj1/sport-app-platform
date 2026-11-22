@@ -192,6 +192,17 @@ variable "health_data_consent_version" {
   }
 }
 
+variable "strava_consent_version" {
+  description = "Versión del texto de consentimiento de Strava que muestra el móvil (HU031, ADR-042). Valor aprobado en terraform.tfvars; null deja STRAVA_CONSENT_VERSION sin definir y third-party-management no queda listo."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.strava_consent_version == null || (length(coalesce(var.strava_consent_version, "x")) >= 1 && length(coalesce(var.strava_consent_version, "x")) <= 64)
+    error_message = "third-party-management admite de 1 a 64 caracteres en STRAVA_CONSENT_VERSION."
+  }
+}
+
 variable "affiliation_expected_catalog_version" {
   description = "Catálogo de planes que Afiliación exige para quedar lista (ADR-036); cambia con el release que trae su migración."
   type        = string

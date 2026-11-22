@@ -24,3 +24,17 @@ output "commands" {
     db_password = "kubectl --context ${var.kube_context} --namespace ${local.namespace} get secret sportapp-database -o jsonpath=\"{.data.USUARIOS_DB_PASSWORD}\""
   }
 }
+
+output "strava" {
+  description = "HU031: callback que se registra en el portal de Strava y recursos de mensajería (sin secretos)."
+  value = {
+    redirect_uri       = var.strava_redirect_uri
+    callback_domain    = regex("^https?://([^/:]+)", var.strava_redirect_uri)[0]
+    secret             = "sportapp-third-party"
+    secret_keys        = ["STRAVA_CLIENT_ID", "STRAVA_CLIENT_SECRET", "STRAVA_TOKEN_KEY"]
+    topic              = "sportapp.terceros.v1"
+    subscription       = "entrenamientos-actividades-externas-v1"
+    dead_letter_topic  = "sportapp.terceros.actividades.dlq"
+    integration_active = local.strava_enabled
+  }
+}

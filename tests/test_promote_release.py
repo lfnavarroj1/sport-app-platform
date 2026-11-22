@@ -227,6 +227,69 @@ class PromoteBackendTest(unittest.TestCase):
                     pr.check_base(base, ALLOWLIST)
 
 
+def write_component(directory: Path, extra: str = "") -> Path:
+    """deploy/k8s/components/strava-integration sintético con los objetos de la allowlist (HU031)."""
+    rules = ALLOWLIST["components"]["backend"]["kubernetes"]["components"]["strava-integration"]
+    docs = [f"apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: {n}\nspec:\n  replicas: 1\n" for n in rules["deployments"]]
+    docs += [f"apiVersion: batch/v1\nkind: Job\nmetadata:\n  name: {n}\nspec:\n  template: {{}}\n" for n in rules["jobs"]]
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "all.yaml").write_text("---\n".join(docs) + extra, encoding="utf-8")
+    (directory / "kustomization.yaml").write_text("apiVersion: kustomize.config.k8s.io/v1alpha1\nkind: Component\nresources:\n  - all.yaml\n", encoding="utf-8")
+    return directory
+
+
+class StravaComponentTest(unittest.TestCase):
+    """HU031 (ADR-042): el promotor incluye el componente strava-integration solo si cumple la allowlist."""
+
+    def render(self, root: Path, with_component: bool, extra: str = "") -> tuple[str, str, str]:
+        base = write_base(root / "deploy" / "k8s" / "base")
+        if with_component:
+            write_component(root / "deploy" / "k8s" / "components" / "strava-integration", extra)
+        snapshot: dict[str, str] = {}
+
+        class SnapshotRunner(FakeRunner):
+            def __call__(self, command, env=None) -> str:
+                command = list(command)
+                if "--delivery-pipeline=backend-gke" in command:
+                    source = Path(next(a for a in command if a.startswith("--source=")).removeprefix("--source="))
+                    snapshot["component"] = (source / "backend-components" / "strava-integration" / "kustomization.yaml").read_text(encoding="utf-8")
+                    snapshot["workloads"] = (source / "workloads" / "kustomization.yaml").read_text(encoding="utf-8")
+                    snapshot["skaffold"] = (source / "skaffold.yaml").read_text(encoding="utf-8")
+                return super().__call__(command, env)
+
+        runner = SnapshotRunner({BACKEND_PATH: backend_manifest()})
+        with mock.patch.object(pr, "fetch_backend_base", return_value=base):
+            pr.promote(settings(), runner=runner, allowlist=ALLOWLIST)
+        return snapshot["component"], snapshot["workloads"], snapshot["skaffold"]
+
+    def test_incluye_el_componente_y_sus_objetos_esperados(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            copied, workloads, skaffold = self.render(Path(tmp), True)
+        self.assertIn("resources:", copied)
+        self.assertIn("../backend-components/strava-integration", workloads)
+        for name in ("third-party-management-sync-worker", "third-party-management-outbox-publisher", "training-management-external-activity-consumer"):
+            self.assertIn(name, skaffold)
+
+    def test_sin_componente_deja_uno_vacio(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            copied, _, skaffold = self.render(Path(tmp), False)
+        self.assertIn("kind: Component", copied)
+        self.assertNotIn("resources:", copied)
+        self.assertNotIn("third-party-management-sync-worker", skaffold)
+
+    def test_rechaza_objetos_fuera_de_la_allowlist_en_el_componente(self) -> None:
+        extras = {
+            "deployment": "---\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: minero\n",
+            "service": "---\napiVersion: v1\nkind: Service\nmetadata:\n  name: third-party-management\n",
+            "job": "---\napiVersion: batch/v1\nkind: Job\nmetadata:\n  name: borrar-todo\n",
+            "privilegiado": "---\napiVersion: batch/v1\nkind: Job\nmetadata:\n  name: third-party-management-migrate-main\nspec:\n  privileged: true\n",
+        }
+        for name, extra in extras.items():
+            with self.subTest(caso=name), tempfile.TemporaryDirectory() as tmp:
+                with self.assertRaises(pr.PromotionError):
+                    self.render(Path(tmp), True, extra)
+
+
 class PromoteFrontendTest(unittest.TestCase):
     def test_crea_release_en_frontend_web(self) -> None:
         runner = FakeRunner({FRONTEND_PATH: frontend_manifest(), BACKEND_PATH: backend_manifest()})
@@ -345,6 +408,15 @@ class RealBackendBaseTest(unittest.TestCase):
             self.skipTest("sin clon del backend")
         found = pr.check_base(base, ALLOWLIST)
         self.assertEqual(found["Deployment"], set(ALLOWLIST["components"]["backend"]["kubernetes"]["deployments"]) | {"bff-web", "bff-mobile"})
+
+    def test_componente_strava_real_cumple_la_allowlist(self) -> None:
+        component = ROOT.parent / "backend" / "deploy" / "k8s" / "components" / "strava-integration"
+        if not component.is_dir():
+            self.skipTest("sin componente strava-integration en el clon del backend")
+        found = pr.check_component(component, ALLOWLIST)
+        rules = ALLOWLIST["components"]["backend"]["kubernetes"]["components"]["strava-integration"]
+        self.assertEqual(found["Deployment"], set(rules["deployments"]))
+        self.assertEqual(found["Job"], set(rules["jobs"]))
 
 
 if __name__ == "__main__":

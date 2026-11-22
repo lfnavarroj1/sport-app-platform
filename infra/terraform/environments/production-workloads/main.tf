@@ -83,7 +83,7 @@ resource "kubernetes_config_map_v1" "runtime" {
     }
   }
 
-  data = {
+  data = merge({
     APP_ENV   = local.runtime.app_env
     LOG_LEVEL = var.log_level
     # IP privada de Cloud SQL; la instancia exige TLS y libpq lo negocia.
@@ -94,8 +94,14 @@ resource "kubernetes_config_map_v1" "runtime" {
     USERS_MANAGEMENT_BASE_URL            = "http://users-management"
     # Pub/Sub administrado: sin PUBSUB_EMULATOR_HOST.
     PUBSUB_PROJECT_ID = local.runtime.project_id
-  }
+    # HU031 (ADR-042): callback público de bff-mobile.
+    STRAVA_REDIRECT_URI = local.runtime.strava_redirect_uri
+    },
+    # HU031: la versión del consentimiento de Strava solo se publica cuando está aprobada.
+    local.runtime.strava_consent_version == null ? {} : { STRAVA_CONSENT_VERSION = local.runtime.strava_consent_version },
+  )
 }
+
 
 # Secrets que exigen los manifiestos del backend, leídos de Secret Manager
 # durante el plan y el apply (la identidad necesita secretAccessor).
@@ -139,6 +145,38 @@ resource "kubernetes_secret_v1" "users_jwt" {
   data_wo = {
     JWT_PRIVATE_KEY = ephemeral.google_secret_manager_secret_version.users_jwt[0].secret_data
   }
+  data_wo_revision = var.secrets_revision
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+# HU031 (ADR-042): Secret sportapp-third-party desde los tres secretos strava-*
+# de Secret Manager, que el responsable carga fuera de banda. Sin valores en el repositorio.
+locals {
+  strava_secret_ids = {
+    STRAVA_CLIENT_ID     = "strava-client-id"
+    STRAVA_CLIENT_SECRET = "strava-client-secret"
+    STRAVA_TOKEN_KEY     = "strava-token-key"
+  }
+}
+
+ephemeral "google_secret_manager_secret_version" "strava" {
+  for_each = var.sync_strava_secret ? local.strava_secret_ids : {}
+
+  secret = each.value
+}
+
+resource "kubernetes_secret_v1" "third_party" {
+  count = var.sync_strava_secret ? 1 : 0
+
+  metadata {
+    name      = "sportapp-third-party"
+    namespace = kubernetes_namespace_v1.sportapp.metadata[0].name
+  }
+
+  data_wo          = { for key, version in ephemeral.google_secret_manager_secret_version.strava : key => version.secret_data }
   data_wo_revision = var.secrets_revision
 
   lifecycle {

@@ -272,6 +272,27 @@ def check_base(base: Path, allowlist: Mapping[str, Any]) -> dict[str, set[str]]:
     return found
 
 
+COMPONENT_NAME = "strava-integration"
+
+
+def component_path(base: Path) -> Path:
+    """deploy/k8s/components/strava-integration, hermano de deploy/k8s/base."""
+    return base.parent / "components" / COMPONENT_NAME
+
+
+def check_component(path: Path, allowlist: Mapping[str, Any]) -> dict[str, set[str]]:
+    """Componente de Kustomize del backend (HU031): solo Deployments y Jobs de la allowlist."""
+    rules = allowlist["components"]["backend"]["kubernetes"]["components"][COMPONENT_NAME]
+    found = inventory_base(path)
+    _require(found["Deployment"] <= set(rules["deployments"]), f"Deployments del componente fuera de la allowlist: {sorted(found['Deployment'] - set(rules['deployments']))}")
+    _require(found["Job"] <= set(rules["jobs"]), f"Jobs del componente fuera de la allowlist: {sorted(found['Job'] - set(rules['jobs']))}")
+    _require(not found["Service"], "el componente no puede declarar Services")
+    return found
+
+
+EMPTY_COMPONENT = "apiVersion: kustomize.config.k8s.io/v1alpha1\nkind: Component\n"
+
+
 # --------------------------------------------------------- fuente y release
 
 def release_name(pipeline: str, release: Release, suffix: str = "") -> str:
@@ -410,6 +431,10 @@ def fetch_backend_base(settings: Settings, release: Release, workdir: Path, runn
     runner(["git", "-C", str(clone), "init", "--quiet"], None)
     runner(["git", "-C", str(clone), "fetch", "--quiet", "--depth", "1", remote, release.commit], env)
     runner(["git", "-C", str(clone), "checkout", "--quiet", "FETCH_HEAD", "--", "deploy/k8s/base"], None)
+    # El componente strava-integration (HU031) no existe en commits anteriores a su integración.
+    component = f"deploy/k8s/components/{COMPONENT_NAME}"
+    if runner(["git", "-C", str(clone), "ls-tree", "--name-only", "FETCH_HEAD", component], None).strip():
+        runner(["git", "-C", str(clone), "checkout", "--quiet", "FETCH_HEAD", "--", component], None)
     commit = runner(["git", "-C", str(clone), "rev-parse", "FETCH_HEAD"], None).strip()
     _require(commit == release.commit, "el commit obtenido no es el de la release")
     return clone / "deploy" / "k8s" / "base"
@@ -438,12 +463,20 @@ def release_commands(settings: Settings, release: Release, allowlist: Mapping[st
             _require(base is not None, "falta deploy/k8s/base del backend")
             found = check_base(base, allowlist)  # type: ignore[arg-type]
             rules = allowlist["components"]["backend"]["kubernetes"]
-            values["EXPECTED_JOBS"] = str(len(found["Job"]))
-            values["DEPLOYMENTS"] = " ".join(sorted(set(rules["deployments"]) & found["Deployment"]))
+            component = component_path(base)  # type: ignore[arg-type]
+            extra = check_component(component, allowlist) if component.is_dir() else {"Deployment": set(), "Job": set()}
+            values["EXPECTED_JOBS"] = str(len(found["Job"]) + len(extra["Job"]))
+            values["DEPLOYMENTS"] = " ".join(sorted((set(rules["deployments"]) & found["Deployment"]) | extra["Deployment"]))
             values["SMOKE_SERVICES"] = " ".join(rules["smokeServices"])
         render_source(DEPLOY_DIR / spec["source"], source, values)
         if spec["source"] == "gke":
             shutil.copytree(base, source / "backend-base")  # type: ignore[arg-type]
+            target = source / "backend-components" / COMPONENT_NAME
+            if component.is_dir():
+                shutil.copytree(component, target)
+            else:
+                target.mkdir(parents=True)
+                (target / "kustomization.yaml").write_text(EMPTY_COMPONENT, encoding="utf-8")
         images = ",".join(f"sportapp/{image}={release.images[image]}" for image in spec["images"])
         annotations = ",".join([
             f"sportapp.io/component={release.component}",

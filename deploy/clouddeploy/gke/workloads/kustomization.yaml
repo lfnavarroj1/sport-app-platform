@@ -5,6 +5,10 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../backend-base
+# Componente strava-integration del backend (HU031, ADR-042), validado por el promotor
+# contra la allowlist; sin él (releases anteriores) el promotor deja un componente vacío.
+components:
+  - ../backend-components/strava-integration
 # Namespace productivo (ver migrations/kustomization.yaml).
 namespace: "@@NAMESPACE@@"
 patches:
@@ -109,6 +113,21 @@ patches:
         path: /spec/template/spec/serviceAccountName
         value: third-party-management
     target: {kind: Deployment, name: third-party-management}
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: third-party-management-outbox-publisher
+    target: {kind: Deployment, name: third-party-management-outbox-publisher}
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: third-party-management-sync-worker
+    target: {kind: Deployment, name: third-party-management-sync-worker}
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: training-management-external-activity-consumer
+    target: {kind: Deployment, name: training-management-external-activity-consumer}
   # Dos réplicas por API (vista de despliegue; hipótesis por validar con carga).
   - patch: |-
       - op: replace

@@ -59,7 +59,7 @@ A diferencia de la [sección 15.3](#153-destruir-solamente-el-plano-operativo), 
 Detalles:
 
 - **Archivos generados.** El script respalda en `%USERPROFILE%\terraform-state-backups\sportapp\vars` cualquier archivo editado a mano antes de reemplazarlo. Los cambios se hacen en `.env.ps1`, no en los archivos generados.
-- **Imágenes de Cloud Run.** Los digests están en `environments\production\cloud-run-images.auto.tfvars.json`, que también se genera y está ignorado por Git.
+- **Imágenes de Cloud Run.** Los digests están en `environments\production\cloud-run-images.auto.tfvars.json`, que también se genera y está ignorado por Git. Antes de cada plan de producción el script lo actualiza con los digests que corren en Cloud Run; así un `apply` no devuelve los servicios a una versión anterior a la que desplegó Cloud Deploy.
 - **Política de ejecución.** Si PowerShell bloquea la ejecución de scripts, usa `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` en esa terminal.
 
 Las instrucciones de uso completas están en [`scripts/sportapp-gcp.md`](../scripts/sportapp-gcp.md). Las secciones siguientes siguen siendo la referencia de cada paso y de los controles que el script automatiza.

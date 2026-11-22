@@ -10,6 +10,9 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../backend-base
+# Componente strava-integration del backend (HU031): su Job de migración de la base terceros.
+components:
+  - ../backend-components/strava-integration
 # Namespace productivo: sin él kubectl aplica en el del contexto (default), donde
 # cloud-deploy-execution no tiene permisos (su Role vive solo en este namespace).
 namespace: "@@NAMESPACE@@"
@@ -73,6 +76,13 @@ patches:
     target:
       kind: Job
       name: events-management-.*
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: third-party-management-migrate
+    target:
+      kind: Job
+      name: third-party-management-.*
   # Los Jobs terminados se conservan 7 días para auditoría y luego se limpian.
   - patch: |-
       - op: add

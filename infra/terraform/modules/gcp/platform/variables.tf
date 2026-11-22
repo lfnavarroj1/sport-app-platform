@@ -237,20 +237,23 @@ variable "app_secrets" {
 }
 
 variable "app_config" {
-  description = "Versiones no secretas del ambiente que comparten Cloud Run y GKE: políticas de registro (HU001), consentimiento de datos de salud (ADR-034) y catálogo esperado de Afiliación (ADR-036)."
+  description = "Versiones no secretas del ambiente que comparten Cloud Run y GKE: políticas de registro (HU001), consentimiento de datos de salud (ADR-034) y catálogo esperado de Afiliación (ADR-036), más la versión del consentimiento de Strava (HU031)."
   type = object({
     registration_policies_version        = string
     health_data_consent_version          = string
     affiliation_expected_catalog_version = string
+    # HU031 (ADR-042): sin valor aprobado; null deja STRAVA_CONSENT_VERSION sin definir y third-party-management no queda listo.
+    strava_consent_version = optional(string)
   })
 
   validation {
     condition = (
       length(var.app_config.registration_policies_version) >= 1 && length(var.app_config.registration_policies_version) <= 32 &&
       length(var.app_config.health_data_consent_version) >= 1 && length(var.app_config.health_data_consent_version) <= 64 &&
-      length(var.app_config.affiliation_expected_catalog_version) >= 1 && length(var.app_config.affiliation_expected_catalog_version) <= 40
+      length(var.app_config.affiliation_expected_catalog_version) >= 1 && length(var.app_config.affiliation_expected_catalog_version) <= 40 &&
+      (var.app_config.strava_consent_version == null || (length(coalesce(var.app_config.strava_consent_version, "x")) >= 1 && length(coalesce(var.app_config.strava_consent_version, "x")) <= 64))
     )
-    error_message = "Longitudes que admite el backend: políticas 1-32, consentimiento 1-64 y catálogo 1-40 caracteres."
+    error_message = "Longitudes que admite el backend: políticas 1-32, consentimiento 1-64, catálogo 1-40 y consentimiento de Strava 1-64 caracteres."
   }
 }
 

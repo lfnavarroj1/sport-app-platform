@@ -267,7 +267,7 @@ El rollback y las releases posteriores están en la [sección 14](../docs/prepar
 | --- | --- |
 | `bootstrap/gcp-state/bootstrap.auto.tfvars` | proyectos, operadores, facturación y presupuesto |
 | `environments/production/gcp.auto.tfvars` y `backend.hcl` | proyecto, impersonación, identidades de entrega, consentimiento y alertas |
-| `environments/production/cloud-run-images.auto.tfvars.json` | digests de `web`, `bff-web` y `bff-mobile` |
+| `environments/production/cloud-run-images.auto.tfvars.json` | digests de `web`, `bff-web` y `bff-mobile`; antes de cada plan de producción se toman de los servicios en ejecución, para que Terraform no revierta lo que desplegó Cloud Deploy |
 | `environments/production-workloads/gcp.auto.tfvars` y `backend.hcl` | proyecto, región, bucket de estado e impersonación |
 | `environments/delivery/gcp.auto.tfvars` y `backend.hcl` | identidades, aprobadores, imagen de herramientas, estado de la conexión y de los triggers |
 

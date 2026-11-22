@@ -80,12 +80,18 @@ cloud_run_env = {
 # Versiones del ambiente (sportapp-runtime en GKE y web en Cloud Run).
 registration_policies_version        = "sportapp-c108-c108plus.v1" # HU001, aprobada 2026-10-17
 affiliation_expected_catalog_version = "plans-2026-10-13.v1"       # ADR-036, migración 0003_plan_price_offers
+strava_consent_version               = "strava-2026-11-v1"         # HU031, aprobada 2026-11-21
 # health_data_consent_version: sin valor aprobado (ADR-034). Se pasa con -var o
 # en gcp.auto.tfvars cuando el responsable la defina; sin ella el plan se detiene.
 
 # Solo contenedores; los valores se cargan con gcloud (ver README).
 # users-jwt-private-key: clave Ed25519 de users-management (Secret sportapp-users-jwt en GKE).
+# strava-*: aplicación OAuth compartida de Strava y clave AES-256-GCM de los tokens
+# (HU031, ADR-042); production-workloads los copia al Secret sportapp-third-party.
 app_secrets = {
   users-jwt-private-key = { accessors = [] }
+  strava-client-id      = { accessors = [] }
+  strava-client-secret  = { accessors = [] }
+  strava-token-key      = { accessors = [] }
 }
 cloud_run_secret_env = {}
