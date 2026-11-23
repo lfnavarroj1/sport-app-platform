@@ -40,8 +40,9 @@ override_data {
           min_instances   = 1, max_instances = 10, concurrency = 80, timeout_seconds = 30
           vpc_network     = "sportapp-prod-vpc", vpc_subnetwork = "sportapp-prod-serverless"
           env = {
-            APP_ENV                      = "production", LOG_LEVEL = "INFO", USERS_MANAGEMENT_BASE_URL = "http://10.10.0.10", AFFILIATION_MANAGEMENT_BASE_URL = "http://10.10.0.11"
-            TRAINING_MANAGEMENT_BASE_URL = "http://10.10.0.12", COMPLEMENTARY_SERVICES_BASE_URL = "http://10.10.0.13", EVENTS_MANAGEMENT_BASE_URL = "http://10.10.0.14"
+            APP_ENV                         = "production", LOG_LEVEL = "INFO", USERS_MANAGEMENT_BASE_URL = "http://10.10.0.10", AFFILIATION_MANAGEMENT_BASE_URL = "http://10.10.0.11"
+            TRAINING_MANAGEMENT_BASE_URL    = "http://10.10.0.12", COMPLEMENTARY_SERVICES_BASE_URL = "http://10.10.0.13", EVENTS_MANAGEMENT_BASE_URL = "http://10.10.0.14"
+            THIRD_PARTY_MANAGEMENT_BASE_URL = "http://10.10.0.15"
           }
           secret_env = {}
           uri        = "https://bff-mobile-1.us-central1.run.app"
@@ -352,8 +353,9 @@ run "rechaza_parametros_distintos_de_la_plantilla" {
             min_instances   = 1, max_instances = 10, concurrency = 80, timeout_seconds = 30
             vpc_network     = "sportapp-prod-vpc", vpc_subnetwork = "sportapp-prod-serverless"
             env = {
-              APP_ENV                      = "production", LOG_LEVEL = "INFO", USERS_MANAGEMENT_BASE_URL = "http://10.10.0.10", AFFILIATION_MANAGEMENT_BASE_URL = "http://10.10.0.11"
-              TRAINING_MANAGEMENT_BASE_URL = "http://10.10.0.12", COMPLEMENTARY_SERVICES_BASE_URL = "http://10.10.0.13", EVENTS_MANAGEMENT_BASE_URL = "http://10.10.0.14"
+              APP_ENV                         = "production", LOG_LEVEL = "INFO", USERS_MANAGEMENT_BASE_URL = "http://10.10.0.10", AFFILIATION_MANAGEMENT_BASE_URL = "http://10.10.0.11"
+              TRAINING_MANAGEMENT_BASE_URL    = "http://10.10.0.12", COMPLEMENTARY_SERVICES_BASE_URL = "http://10.10.0.13", EVENTS_MANAGEMENT_BASE_URL = "http://10.10.0.14"
+              THIRD_PARTY_MANAGEMENT_BASE_URL = "http://10.10.0.15"
             }
             secret_env = {}
             uri        = "https://bff-mobile-1.us-central1.run.app"
