@@ -13,9 +13,9 @@ acceptedStories: []
 components:
   backend:
     repository: "https://github.com/lfnavarroj1/sport-app-backend"
-    version: "0.4.0"
-    ref: "v0.4.0"
-    commit: "1647cf09f6b75d091d44581a729d626dcd139e53"
+    version: "0.5.0"
+    ref: "v0.5.0"
+    commit: "f8b919b02ec19e8990e958d60a6126a0b2cd143c"
     contractVersion: "0.34.0"
     artifacts:
       affiliation-management: "us-central1-docker.pkg.dev/sportapp-prod-lfnj-2026/sportapp-backend/affiliation-management@sha256:67a8213aa8a14bf68d9a7a0087897067511b201929ba6f1d2d2d9aa65d44394e"
@@ -44,9 +44,9 @@ components:
       cloudBuildId: "f3d6c518-4346-41b8-b611-9a7d81fedc3f"
   mobile:
     repository: "https://github.com/lfnavarroj1/sport-app-movil"
-    version: "0.2.0"
-    versionCode: 2000
-    ref: "v0.2.0"
-    commit: "67dbbdc8b4af261d087d37d6c02a3eb82a76cfda"
+    version: "0.3.0"
+    versionCode: 3000
+    ref: "v0.3.0"
+    commit: "b5b0590cae6c948c660b87f348580413f8753a0a"
     artifact:
-      sha256: "455f981fcf48c3ae18eb3ff219e22579dfe50d66546a53715247cdd7b61c7a60"
+      sha256: "c5258758de3fed98272227dbde234f91fbfb7a49240390df92c0686d06292079"
