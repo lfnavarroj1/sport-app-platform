@@ -124,10 +124,11 @@ class AsistenteStravaTest(unittest.TestCase):
         self.assertNotIn("gke_", out)
         self.assertNotIn("--from-literal", out)
 
-    def test_abrir_navegador_solo_si_el_usuario_acepta(self) -> None:
-        self.assertNotIn("Start-Process", dry_run("strava", "-Environment", "local", "-SimulatedInput", ENTERS))
-        out = dry_run("strava", "-Environment", "local", "-SimulatedInput", "si," + ENTERS)
+    def test_abrir_navegador_por_defecto_y_omitible(self) -> None:
+        out = dry_run("strava", "-Environment", "local", "-SimulatedInput", ENTERS)
         self.assertIn("[dry-run] Start-Process https://www.strava.com/settings/api", out)
+        out = dry_run("strava", "-Environment", "local", "-SimulatedInput", "no," + ENTERS)
+        self.assertNotIn("Start-Process", out)
 
     def test_repetir_y_salir(self) -> None:
         out = dry_run("strava", "-Environment", "local", "-SimulatedInput", "no,r,no,s", expect=1)
@@ -177,8 +178,12 @@ class DryRunTest(unittest.TestCase):
         self.assertIn("-Target platform", out)
         self.assertIn("-AutoApprove", out)
 
-    def test_release_sin_target_en_dryrun_falla(self) -> None:
-        dry_run("release", "sequence", expect=1)
+    def test_release_sin_target_lanza_todo(self) -> None:
+        out = dry_run("release", "sequence")
+        for stage in ("1/4", "2/4", "3/4", "4/4"):
+            self.assertIn(f"etapa {stage}", out)
+        for target in ("backend-frontend", "mobile", "platform"):
+            self.assertIn(f"-Target {target}", out)
 
     def test_release_comando_suelto_reenvia_parametros(self) -> None:
         out = dry_run("release", "release", "-Target", "platform", "-Stories", "HU001,HU010")
