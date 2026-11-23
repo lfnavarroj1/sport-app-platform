@@ -6,7 +6,7 @@
 # (opción Plataforma de scripts/sportapp-release.ps1) completa todos los campos, cambia el
 # estado a `released` y copia este archivo a releases/vX.Y.Z.yaml.
 schemaVersion: 1
-platformVersion: "0.5.0"
+platformVersion: "0.6.0"
 status: "draft"
 sprint: "Sprint 1"
 acceptedStories: []
@@ -18,18 +18,18 @@ components:
     commit: "f8b919b02ec19e8990e958d60a6126a0b2cd143c"
     contractVersion: "0.34.0"
     artifacts:
-      affiliation-management: "us-central1-docker.pkg.dev/sportapp-prod-lfnj-2026/sportapp-backend/affiliation-management@sha256:67a8213aa8a14bf68d9a7a0087897067511b201929ba6f1d2d2d9aa65d44394e"
-      bff-mobile: "us-central1-docker.pkg.dev/sportapp-prod-lfnj-2026/sportapp-backend/bff-mobile@sha256:bbc36833f7901b0e2896c86e811dce8b4c579e679d1af7233b575e70d49283c3"
-      bff-web: "us-central1-docker.pkg.dev/sportapp-prod-lfnj-2026/sportapp-backend/bff-web@sha256:4a01d72829f06cff69e1bda8b80725a7a9b4e1dbaf07ccb44e28104d4ada2766"
-      complementary-services: "us-central1-docker.pkg.dev/sportapp-prod-lfnj-2026/sportapp-backend/complementary-services@sha256:b69a71896db1334dbc06716b7c856a128d0874e79eb61f080c13cb86c3b9a4cd"
-      events-management: "us-central1-docker.pkg.dev/sportapp-prod-lfnj-2026/sportapp-backend/events-management@sha256:d4e1237d294c57b75a9c5f20746674350967a848a2166c2e15768e57cad998ae"
-      third-party-management: "us-central1-docker.pkg.dev/sportapp-prod-lfnj-2026/sportapp-backend/third-party-management@sha256:8b0018b35d4610fc8760d4546f1437576788e1bf2ec05d1d1532ce04af68d751"
-      training-management: "us-central1-docker.pkg.dev/sportapp-prod-lfnj-2026/sportapp-backend/training-management@sha256:cc8409a3f1241fbede17357c01bc46e991b1a194a7994452b5cd71162ac8f853"
-      users-management: "us-central1-docker.pkg.dev/sportapp-prod-lfnj-2026/sportapp-backend/users-management@sha256:e7dd2f1d0394f562da70e8de1eaa2ae83d25c44f215ae2f0f7efdcadf67d4b84"
+      affiliation-management: "us-central1-docker.pkg.dev/sportapp-prod-lfnj-2026/sportapp-backend/affiliation-management@sha256:9f7f221a4cad452c2e7c1864d5a48f54b2c8808405a19d6439bcb6c2af6bd474"
+      bff-mobile: "us-central1-docker.pkg.dev/sportapp-prod-lfnj-2026/sportapp-backend/bff-mobile@sha256:743e47841564ce27035bf46ea50a7d90c4406774ca84994100253d73731660e7"
+      bff-web: "us-central1-docker.pkg.dev/sportapp-prod-lfnj-2026/sportapp-backend/bff-web@sha256:11bf7107caada7ee1198d979cebb7926f049763c174183f4429c4c26c2499b71"
+      complementary-services: "us-central1-docker.pkg.dev/sportapp-prod-lfnj-2026/sportapp-backend/complementary-services@sha256:4980d4e08daa531fe28ce5e03098b594a6630a0238a93376e7ec07bcd8613d59"
+      events-management: "us-central1-docker.pkg.dev/sportapp-prod-lfnj-2026/sportapp-backend/events-management@sha256:c1fc093b350993b0daf50ee2690045547b5531b50bb3f9d0ad75757e66937e12"
+      third-party-management: "us-central1-docker.pkg.dev/sportapp-prod-lfnj-2026/sportapp-backend/third-party-management@sha256:8aab2e0a4264c4e95bd1467130e1b0d9b2b32c5569fd6571a7f9a64d4980c97c"
+      training-management: "us-central1-docker.pkg.dev/sportapp-prod-lfnj-2026/sportapp-backend/training-management@sha256:bbf57c15be995bab510d9e61a83d84311724fa4f0cbc9b9e7f9a8f2cd7daf4dd"
+      users-management: "us-central1-docker.pkg.dev/sportapp-prod-lfnj-2026/sportapp-backend/users-management@sha256:98c17326c5dea6b797d62f117d7ef5fed56d6d5b7c88538a641bd280585e491f"
     evidence:
-      uri: "gs://sportapp-mgmt-lfnj-2026-delivery-evidence-backend/sport-app-backend/v0.4.0/backend-release.json"
-      sha256: "67aea4c0af6fb459c66e789e4aa5f3e164281d9dd1973b57ebd912b5c302f8f7"
-      cloudBuildId: "b1315576-539c-487e-bea5-2dff23ad84e2"
+      uri: "gs://sportapp-mgmt-lfnj-2026-delivery-evidence-backend/sport-app-backend/v0.5.0/backend-release.json"
+      sha256: "9a68bb5ccd12a6e720e0c512b941f3a1b83b63aabf806022f86a9b86ff05c9df"
+      cloudBuildId: "73053ac4-1696-4d59-b62e-9b7fffc741d4"
   frontend:
     repository: "https://github.com/lfnavarroj1/sport-app-frontend"
     version: "0.3.0"
