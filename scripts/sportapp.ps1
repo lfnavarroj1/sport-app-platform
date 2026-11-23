@@ -642,13 +642,56 @@ function Get-GcpCallback {
     $null
 }
 
+# El Secret de GKE usa data_wo_revision = var.secrets_revision (campo de solo escritura):
+# Terraform solo lo reescribe cuando ese número cambia. Se devuelve la revisión actual + 1 para
+# que cada ejecución de este paso vuelva a copiar los secretos desde Secret Manager; $null si
+# el Secret aún no existe en el estado (primera vez: se usa el valor por defecto).
+function Get-NextSecretsRevision {
+    $r = Invoke-Native -Exe 'terraform' -Arguments @("-chdir=$WorkloadsRoot", 'state', 'show', '-no-color', 'kubernetes_secret_v1.third_party[0]') -Capture -AllowFailure
+    if ($r.ExitCode -eq 0 -and $r.Output -match 'data_wo_revision\s*=\s*(\d+)') { return [int]$Matches[1] + 1 }
+    $null
+}
+
+# Los pods leen el Secret al arrancar: tras actualizarlo hay que reiniciar las cargas de Terceros
+# (equivale a «kubectl rollout restart»: anota la plantilla con la hora). Usa la API de GKE con la
+# cuenta activa de gcloud, sin necesitar un contexto de kubectl.
+$ThirdPartyDeployments = @('third-party-management', 'third-party-management-outbox-publisher', 'third-party-management-sync-worker')
+function Restart-ThirdPartyGke([switch]$DryRunApi) {
+    $project = Get-GcpProject
+    if ($script:DryRun) { Write-Host "  [dry-run] reiniciar en GKE ($project): $($ThirdPartyDeployments -join ', ')" -ForegroundColor DarkGray; return }
+    $cluster = Invoke-Native -Exe 'gcloud' -Arguments @('container', 'clusters', 'list', '--project', $project, '--limit=1', '--format=value(name,location)', '--quiet') -Capture -AllowFailure
+    $parts = @("$($cluster.Output)".Trim() -split '\s+')
+    if ($cluster.ExitCode -ne 0 -or $parts.Count -lt 2) { Write-Bad 'No se pudo localizar el clúster de GKE; reinicia third-party-management a mano.'; return }
+    $dns = "$((Invoke-Native -Exe 'gcloud' -Arguments @('container', 'clusters', 'describe', $parts[0], '--location', $parts[1], '--project', $project, '--format=value(controlPlaneEndpointsConfig.dnsEndpointConfig.endpoint)', '--quiet') -Capture -AllowFailure).Output)".Trim()
+    $token = "$((Invoke-Native -Exe 'gcloud' -Arguments @('auth', 'print-access-token', '--quiet') -Capture -AllowFailure).Output)".Trim()
+    if (-not $dns -or -not $token) { Write-Bad 'No se pudo obtener el endpoint o el token de GKE; reinicia third-party-management a mano.'; return }
+    $stamp = (Get-Date).ToUniversalTime().ToString('o')
+    $body = '{"spec":{"template":{"metadata":{"annotations":{"kubectl.kubernetes.io/restartedAt":"' + $stamp + '"}}}}}'
+    $query = if ($DryRunApi) { '?dryRun=All' } else { '' }
+    foreach ($d in $ThirdPartyDeployments) {
+        $uri = "https://$dns/apis/apps/v1/namespaces/sportapp/deployments/${d}${query}"
+        try {
+            Invoke-RestMethod -Method Patch -Uri $uri -Headers @{ Authorization = "Bearer $token" } -ContentType 'application/strategic-merge-patch+json' -Body $body | Out-Null
+            Write-Ok "$d$(if ($DryRunApi) { ' (comprobado, sin aplicar)' } else { ' reiniciado' })"
+        } catch { Write-Bad "${d}: $($_.Exception.Message)" }
+    }
+}
+
 function Invoke-StravaActivateGcp {
     Write-Note 'sportapp-gcp.ps1 no expone sync_strava_secret; se ejecuta Terraform sobre production-workloads (ya inicializada por sportapp-gcp.ps1 up/check). El plan se muestra y el apply pide «si».'
     Show-GcpIdentity
-    Invoke-Native -Exe 'terraform' -Arguments @("-chdir=$WorkloadsRoot", 'plan', '-input=false', '-out=tfplan-strava', '-var', 'sync_strava_secret=true')
+    $planArgs = @("-chdir=$WorkloadsRoot", 'plan', '-input=false', '-out=tfplan-strava', '-var', 'sync_strava_secret=true')
+    $revision = if ($script:DryRun) { $null } else { Get-NextSecretsRevision }
+    if ($revision) {
+        Write-Note "secrets_revision = ${revision}: sube la revisión para que Terraform vuelva a escribir el Secret desde Secret Manager (sin esto repetir el paso no cambia nada)."
+        $planArgs += @('-var', "secrets_revision=$revision")
+    }
+    Invoke-Native -Exe 'terraform' -Arguments $planArgs
     Invoke-Native -Exe 'terraform' -Arguments @("-chdir=$WorkloadsRoot", 'show', 'tfplan-strava')
     Confirm-Si 'terraform apply en production-workloads (copia el Secret sportapp-third-party a GKE).'
     Invoke-Native -Exe 'terraform' -Arguments @("-chdir=$WorkloadsRoot", 'apply', '-input=false', 'tfplan-strava')
+    Write-Step 'Reiniciar las cargas de Terceros para que lean el Secret'
+    Restart-ThirdPartyGke
     Write-Note 'Un sportapp-gcp.ps1 up posterior reconcilia workloads sin esta variable: repite este paso si lo ejecutas.'
 }
 
