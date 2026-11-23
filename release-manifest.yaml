@@ -1,12 +1,15 @@
 # yaml-language-server: $schema=schemas/release-manifest.schema.json
-# Composición publicada de SportApp v0.3.0: versiones, commits, digests y
-# evidencia de Cloud Build que validó scripts/sportapp-release.ps1.
+# Composición candidata de SportApp.
+#
+# `draft` permite registrar los commits fijados por los submódulos antes de
+# que existan releases y artefactos publicados. La release de plataforma
+# (opción Plataforma de scripts/sportapp-release.ps1) completa todos los campos, cambia el
+# estado a `released` y copia este archivo a releases/vX.Y.Z.yaml.
 schemaVersion: 1
-platformVersion: "0.3.0"
-status: "released"
+platformVersion: "0.4.0"
+status: "draft"
 sprint: "Sprint 1"
-acceptedStories:
-  - "HU031"
+acceptedStories: []
 components:
   backend:
     repository: "https://github.com/lfnavarroj1/sport-app-backend"
