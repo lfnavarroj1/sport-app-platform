@@ -229,6 +229,23 @@ function Get-Forwarded([string[]]$Names) {
     $map
 }
 
+# La release de la plataforma deduce las HU de los commits de los componentes; si ninguno
+# las menciona, sportapp-release.ps1 aborta. Se piden aquí para no llegar a ese error.
+# Con -Stories o con -DryRun no pregunta; Enter deja la detección automática.
+function Request-ReleaseStories {
+    if ($script:Bound.ContainsKey('Stories') -or $script:DryRun) { return }
+    while ($true) {
+        $answer = Read-Host 'HU incluidas en la release de la plataforma (p. ej. HU031,HU032). Enter = detectarlas de los commits'
+        if (-not $answer.Trim()) { return }
+        $list = @($answer -split '[,\s]+' | Where-Object { $_ } | ForEach-Object { $_.ToUpperInvariant() })
+        if (@($list | Where-Object { $_ -notmatch '^HU\d+$' }).Count -eq 0) {
+            $script:Bound['Stories'] = [string[]]$list
+            return
+        }
+        Write-Bad "Formato inválido: usa HU seguido de números, separadas por comas (HU031,HU032)."
+    }
+}
+
 function Show-GcpIdentity {
     Write-Step 'Cuenta y proyecto de gcloud activos'
     if ($script:DryRun) {
@@ -268,6 +285,9 @@ function Invoke-Gcp([string]$Verb) {
 function Invoke-Release([string]$Verb) {
     $verbs = @('check', 'status', 'builds', 'release', 'hotfix', 'apk', 'submodules', 'prepare', 'keystore')
     if ($verbs -notcontains $Verb) { throw "Acción de release inválida '$Verb'. Opciones: sequence, $($verbs -join ', ')." }
+    # Desde el menú no hay -Target: el script de releases lo pregunta después y puede ser la
+    # plataforma, así que las HU se piden siempre antes de publicar.
+    if ($Verb -eq 'release') { Request-ReleaseStories }
     $params = Get-Forwarded @('Target', 'Bump', 'BackendVersion', 'FrontendVersion', 'MobileVersion', 'PlatformVersion', 'SystemVersion', 'Stories', 'Sprint', 'ConfigFile')
     $params.Command = $Verb
     if ($Verb -in @('release', 'hotfix', 'apk', 'submodules', 'prepare', 'keystore')) {
@@ -282,29 +302,28 @@ function Invoke-Release([string]$Verb) {
 # siendo humana porque sportapp-release.ps1 siempre la pregunta.
 function Invoke-ReleaseSequence {
     $components = @('backend', 'backend-frontend', 'frontend', 'mobile')
+    # Sin -Target se lanza todo: backend y frontend, luego la app móvil y al final la plataforma.
+    # Lo que no tiene cambios pendientes lo omite sportapp-release.ps1 ("No hay nada que publicar").
     $comp = $Target
-    if (-not $comp) {
-        if ($script:DryRun) { throw 'Indica -Target (backend, backend-frontend, frontend o mobile) para la secuencia.' }
-        $comp = Read-Choice 'Componente a publicar' @(
-            @{ Label = 'Solo backend'; Value = 'backend' }, @{ Label = 'Backend y frontend'; Value = 'backend-frontend' },
-            @{ Label = 'Solo frontend'; Value = 'frontend' }, @{ Label = 'Solo aplicación móvil'; Value = 'mobile' })
-        if (-not $comp) { return }
-    }
-    if ($components -notcontains $comp) { throw "La secuencia admite -Target: $($components -join ', ')." }
+    $targets = if ($comp) { @($comp) } else { @('backend-frontend', 'mobile') }
+    $label = if ($comp) { $comp } else { 'backend, frontend y móvil' }
+    if ($comp -and $components -notcontains $comp) { throw "La secuencia admite -Target: $($components -join ', ')." }
     $common = Get-Forwarded @('ConfigFile')
+    $releaseForward = @('Bump', 'BackendVersion', 'FrontendVersion', 'MobileVersion', 'SystemVersion')
     $stages = @(
-        @{ Name = '1/4 check de componente y plataforma'; Mutating = $false; Calls = @(
-            @{ Command = 'check'; Target = $comp }, @{ Command = 'check'; Target = 'platform' }) }
-        @{ Name = "2/4 release del componente ($comp), sin mover la plataforma"; Mutating = $true; Calls = @(
-            @{ Command = 'release'; Target = $comp; SkipPlatform = $true; Forward = @('Bump', 'BackendVersion', 'FrontendVersion', 'MobileVersion', 'SystemVersion') }) }
+        @{ Name = '1/4 check de componentes y plataforma'; Mutating = $false; Calls = @(
+            @($targets | ForEach-Object { @{ Command = 'check'; Target = $_ } }) + @(@{ Command = 'check'; Target = 'platform' })) }
+        @{ Name = "2/4 release de componentes ($label), sin mover la plataforma"; Mutating = $true; Calls = @(
+            $targets | ForEach-Object { @{ Command = 'release'; Target = $_; SkipPlatform = $true; Forward = $releaseForward } }) }
         @{ Name = '3/4 submódulos y release-manifest.yaml'; Mutating = $true; Calls = @(
-            @{ Command = 'submodules'; Target = $comp }) }
+            $targets | ForEach-Object { @{ Command = 'submodules'; Target = $_ } }) }
         @{ Name = '4/4 release de la plataforma (versión del sistema)'; Mutating = $true; Calls = @(
             @{ Command = 'release'; Target = 'platform'; Forward = @('Bump', 'PlatformVersion', 'Stories', 'Sprint') }) }
     )
     foreach ($stage in $stages) {
         Write-Step "Releases: etapa $($stage.Name)"
         if ($stage.Mutating) { Confirm-Si "Etapa '$($stage.Name)': publica o modifica repositorios, tags o artefactos." }
+        if ($stage.Calls | Where-Object { $_.Target -eq 'platform' -and $_.Command -eq 'release' }) { Request-ReleaseStories }
         foreach ($call in $stage.Calls) {
             $params = @{} + $common
             $params.Command = $call.Command; $params.Target = $call.Target
@@ -425,15 +444,15 @@ $StravaSteps = @(
         Que     = 'Registra la aplicación OAuth de SportApp en tu cuenta de Strava.'
         Donde   = 'https://www.strava.com/settings/api (inicia sesión con la cuenta de Strava que usarás en la tableta; la aplicación nueva admite pocos atletas).'
         Valores = @(
-            'Application Name = SportApp (o el nombre que prefieras)',
+            @{ local = 'Application Name = SportApp (o el nombre que prefieras)'; gcp = 'Application Name = SportApp Producción. Crea una aplicación NUEVA: la de localhost tiene otro dominio de callback y Strava admite uno solo por aplicación.' },
             'Category = Training (o la más cercana)',
             'Club = vacío',
-            'Website = http://localhost',
-            'Application Description = Prueba de integración de SportApp',
+            @{ local = 'Website = http://localhost'; gcp = 'Website = https://{DOMAIN}' },
+            @{ local = 'Application Description = Prueba de integración de SportApp'; gcp = 'Application Description = SportApp en producción' },
             @{ local = 'Authorization Callback Domain = localhost (sin http:// ni ruta)'; gcp = 'Authorization Callback Domain = {DOMAIN} (dominio de bff-mobile en Cloud Run, sin https:// ni ruta; callback completo: {CALLBACK})' },
             'Icono = sube cualquier imagen PNG o JPG',
-            'Pulsa Create (o Update si la aplicación ya existe).')
-        Ok      = 'La página muestra Client ID (un número) y Client Secret. Cópialos para el paso 2; no los pegues en chats ni en Git.'
+            @{ local = 'Pulsa Create (o Update si la aplicación ya existe).'; gcp = 'Pulsa Create. No uses Update sobre la aplicación de localhost: dejaría de servir para la prueba local.' })
+        Ok      = @{ local = 'La página muestra Client ID (un número) y Client Secret. Cópialos para el paso 2; no los pegues en chats ni en Git.'; gcp = 'La página muestra el Client ID y el Client Secret de la aplicación de PRODUCCIÓN. Son los que escribes en el paso 2 (no los de la aplicación de localhost); no los pegues en chats ni en Git.' }
         Falla   = 'Si Strava rechaza el dominio o muestra error de callback, ve al paso 6 (plan B con túnel HTTPS).'
     },
     @{
@@ -511,13 +530,25 @@ function New-TokenKey {
 # (en Secret Manager "valor\r\n" sería otra clave). El texto nunca se muestra.
 function Invoke-NativeStdin([string]$Exe, [string[]]$Arguments, [string]$Text, [string]$Display) {
     if ($script:DryRun) { Write-Host "  [dry-run] $Display" -ForegroundColor DarkGray; return }
-    $resolved = (Get-Command $Exe -ErrorAction Stop | Select-Object -First 1).Source
+    # Get-Command puede devolver primero un .ps1 o un script sin extensión (gcloud), que
+    # Process.Start no ejecuta; se prefiere un .exe, .cmd o .bat.
+    $candidates = @(Get-Command $Exe -All -ErrorAction Stop | Where-Object { $_.Source -match '\.(exe|cmd|bat)$' })
+    if (-not $candidates) { throw "No se encontró un ejecutable (.exe, .cmd o .bat) para '$Exe'." }
+    $resolved = $candidates[0].Source
     $quoted = $Arguments | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } }
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $resolved; $psi.Arguments = ($quoted -join ' ')
     $psi.UseShellExecute = $false; $psi.RedirectStandardInput = $true
     $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true
-    $proc = [System.Diagnostics.Process]::Start($psi)
+    # Process codifica stdin con la página de códigos de la consola; en UTF-8 antepone una marca
+    # BOM (3 bytes) al valor y el secreto queda corrupto (STRAVA_TOKEN_KEY "missing"). Los valores
+    # son ASCII (dígitos, hex, base64 URL-safe), así que se usa ASCII, que no lleva preámbulo.
+    if ($Text -match '[^\x00-\x7F]') { throw 'El valor del secreto debe ser ASCII.' }
+    $previousInput = [Console]::InputEncoding
+    try {
+        [Console]::InputEncoding = [System.Text.Encoding]::ASCII
+        $proc = [System.Diagnostics.Process]::Start($psi)
+    } finally { [Console]::InputEncoding = $previousInput }
     $proc.StandardInput.Write($Text); $proc.StandardInput.Close()
     $out = $proc.StandardOutput.ReadToEnd() + $proc.StandardError.ReadToEnd()
     $proc.WaitForExit()
@@ -563,11 +594,16 @@ function Invoke-StravaSecrets {
     Invoke-Kube -Arguments @('get', 'secret', $StravaSecret, '-o', 'go-template={{range $k, $v := .data}}{{$k}} {{end}}') -AllowFailure
 }
 
+# Proyecto de PRODUCCIÓN: los secretos, Pub/Sub y Cloud Run de Strava viven ahí. El proyecto
+# activo de gcloud suele ser el de gestión ($mgmt), que no los tiene, así que se lee $production
+# de .env.ps1 (el mismo archivo que usa sportapp-gcp.ps1).
 function Get-GcpProject {
-    if ($script:DryRun) { return '<proyecto-activo>' }
-    $r = Invoke-Native -Exe 'gcloud' -Arguments @('config', 'get-value', 'project', '--quiet') -Capture -AllowFailure
-    $p = ($r.Output -split "`n")[0].Trim()
-    if (-not $p -or $p -match '\(unset\)') { throw 'No hay proyecto activo en gcloud (gcloud config set project <producción>).' }
+    if ($script:DryRun) { return '<proyecto-de-producción>' }
+    $file = if ($ConfigFile) { $ConfigFile } else { Join-Path $PlatformRoot '.env.ps1' }
+    if (-not (Test-Path -LiteralPath $file)) { throw "No existe ${file}: define `$production (proyecto de producción) en él." }
+    $result = & { param($__path); . $__path; $production } $file
+    $p = "$(@($result | Where-Object { $_ -is [string] })[-1])".Trim()
+    if (-not $p) { throw "Define `$production (ID del proyecto de producción) en $file." }
     $p
 }
 
@@ -654,10 +690,10 @@ function Show-StravaTroubleshooting {
     }
 }
 
-# Ofrece abrir una URL; solo con respuesta 'si'.
+# Abre una URL en el navegador; Enter o 'si' la abren y 'no' la omite.
 function Open-Url([string]$Url) {
-    $a = (Read-Answer "¿Abrir $Url en el navegador? (si/no)").Trim()
-    if ($a -ne 'si') { return }
+    $a = (Read-Answer "Se abrirá $Url en el navegador (Enter = abrir, no = omitir)").Trim().ToLowerInvariant()
+    if ($a -in @('no', 'n')) { return }
     if ($script:DryRun) { Write-Host "  [dry-run] Start-Process $Url" -ForegroundColor DarkGray; return }
     Start-Process $Url
 }
@@ -734,6 +770,17 @@ function Invoke-StravaWizard([string]$Env) {
     Write-Info "Referencia: docs/guia-prueba-strava.md. Cinco pasos más la tabla de fallos (paso 6); en cada uno confirmas antes de seguir."
     $total = $StravaSteps.Count + 1
     $n = [Math]::Max($FromStep, 1)
+    # Desde el menú no hay -FromStep: se pregunta para poder retomar sin repetir pasos ya hechos.
+    if (-not $script:Bound.ContainsKey('FromStep') -and -not $script:DryRun) {
+        Write-Note 'Pasos: 1 crear la aplicación en Strava, 2 cargar secretos, 3 activar, 4 tableta, 5 sincronizar.'
+        while ($true) {
+            $raw = "$(Read-Answer "¿Desde qué paso empiezas? (1-$($StravaSteps.Count), Enter = 1)")".Trim()
+            if (-not $raw) { break }
+            $parsed = 0
+            if ([int]::TryParse($raw, [ref]$parsed) -and $parsed -ge 1 -and $parsed -le $StravaSteps.Count) { $n = $parsed; break }
+            Write-Bad "'$raw' no es un paso válido."
+        }
+    }
     while ($n -le $StravaSteps.Count) {
         Show-StravaStep $StravaSteps[$n - 1] $n $total $Env $context
         Invoke-StravaStepAction $n $Env $context
@@ -763,12 +810,14 @@ function Invoke-TabletReverse {
 
 function Invoke-TabletInstall([string]$BaseUrl) {
     Confirm-Si "Compilar e instalar el APK de depuración en la tableta $TabletSerial (BFF $BaseUrl)."
-    $gradle = Join-Path $MobilePath 'gradlew.bat'
+    $wrapperJar = Join-Path $MobilePath 'gradle\wrapper\gradle-wrapper.jar'
     $previousSerial = $env:ANDROID_SERIAL
     try {
         # ANDROID_SERIAL impide que installDebug alcance otro dispositivo.
         $env:ANDROID_SERIAL = $TabletSerial
-        Invoke-Native -Exe $gradle -Arguments @(':app:installDebug', "-Psportapp.bffMobileBaseUrl.debug=$BaseUrl") -WorkDir $MobilePath -Display "ANDROID_SERIAL=$TabletSerial gradlew.bat :app:installDebug -Psportapp.bffMobileBaseUrl.debug=$BaseUrl"
+        # Se invoca el wrapper con java -jar y no con gradlew.bat: su "-classpath """ vacío
+        # falla con algunos JDK ("-classpath requires class path specification").
+        Invoke-Native -Exe 'java' -Arguments @('-Dorg.gradle.appname=gradlew', '-jar', $wrapperJar, ':app:installDebug', "-Psportapp.bffMobileBaseUrl.debug=$BaseUrl") -WorkDir $MobilePath -Display "ANDROID_SERIAL=$TabletSerial java -jar gradle-wrapper.jar :app:installDebug -Psportapp.bffMobileBaseUrl.debug=$BaseUrl"
     } finally { $env:ANDROID_SERIAL = $previousSerial }
 }
 
@@ -848,7 +897,7 @@ function Invoke-Area([string]$Name, [string]$Verb) {
 
 function Show-Menu {
     $releaseItems = @(
-        @{ Label = 'Secuencia completa: check, release del componente, submódulos/manifiesto, plataforma'; Value = 'sequence' },
+        @{ Label = 'Lanzar release de todo (backend, frontend, móvil y plataforma; omite lo que no tenga cambios)'; Value = 'sequence' },
         @{ Label = 'Solo check (gh, permisos, ramas, herramientas)'; Value = 'check' },
         @{ Label = 'Ver cambios pendientes y última release (status)'; Value = 'status' },
         @{ Label = 'Publicar una release suelta (release)'; Value = 'release' },
