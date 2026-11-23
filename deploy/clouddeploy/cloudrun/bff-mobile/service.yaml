@@ -45,6 +45,8 @@ spec:
               value: http://complementary-services # from-param: ${env_COMPLEMENTARY_SERVICES_BASE_URL}
             - name: EVENTS_MANAGEMENT_BASE_URL
               value: http://events-management # from-param: ${env_EVENTS_MANAGEMENT_BASE_URL}
+            - name: THIRD_PARTY_MANAGEMENT_BASE_URL
+              value: http://third-party-management # from-param: ${env_THIRD_PARTY_MANAGEMENT_BASE_URL}
             - name: LOG_LEVEL
               value: INFO # from-param: ${env_LOG_LEVEL}
           startupProbe:
