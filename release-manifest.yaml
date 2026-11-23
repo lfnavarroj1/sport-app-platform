@@ -1,8 +1,8 @@
 # yaml-language-server: $schema=schemas/release-manifest.schema.json
-# Composición publicada de SportApp v0.2.0: versiones, commits, digests y
+# Composición publicada de SportApp v0.3.0: versiones, commits, digests y
 # evidencia de Cloud Build que validó scripts/sportapp-release.ps1.
 schemaVersion: 1
-platformVersion: "0.2.0"
+platformVersion: "0.3.0"
 status: "released"
 sprint: "Sprint 1"
 acceptedStories:
